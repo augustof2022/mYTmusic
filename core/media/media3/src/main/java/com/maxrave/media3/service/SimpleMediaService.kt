@@ -175,6 +175,10 @@ internal class SimpleMediaService :
     override fun onTaskRemoved(rootIntent: Intent?) {
         Logger.w("Service", "Simple Media Service Task Removed")
         if (simpleMediaServiceHandler.shouldReleaseOnTaskRemoved()) {
+            // Remove our task snapshots before process teardown, including OEM Recents cards.
+            getSystemService(ActivityManager::class.java)?.appTasks?.forEach { task ->
+                task.finishAndRemoveTask()
+            }
             release()
             super.onTaskRemoved(rootIntent)
             exitProcess(0)

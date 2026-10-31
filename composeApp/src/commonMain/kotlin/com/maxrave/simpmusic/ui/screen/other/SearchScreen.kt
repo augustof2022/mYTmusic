@@ -122,6 +122,9 @@ import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
 import com.maxrave.simpmusic.ui.component.PlaylistFullWidthItems
 import com.maxrave.simpmusic.ui.component.ShimmerSearchItem
 import com.maxrave.simpmusic.ui.component.SimpMusicChartButton
+import com.maxrave.simpmusic.ui.component.SearchQuickAddButton
+import com.maxrave.simpmusic.ui.component.SearchQuickAddDestination
+import com.maxrave.simpmusic.ui.component.SearchQuickAddReceipt
 import com.maxrave.simpmusic.ui.component.SongFullWidthItems
 import com.maxrave.simpmusic.ui.component.selection.SelectedSongsBottomSheet
 import com.maxrave.simpmusic.ui.component.selection.SongSelectionTopAppBar
@@ -142,6 +145,7 @@ import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SearchScreenUIState
 import com.maxrave.simpmusic.viewModel.SearchType
+import com.maxrave.simpmusic.viewModel.SearchPlaylistViewModel
 import com.maxrave.simpmusic.viewModel.SearchViewModel
 import com.maxrave.simpmusic.viewModel.SharedViewModel
 import com.maxrave.simpmusic.viewModel.SongSelectionViewModel
@@ -179,6 +183,8 @@ fun SearchScreen(
     sharedViewModel: SharedViewModel = koinInject(),
     navController: NavController,
 ) {
+    val playlistViewModel: SearchPlaylistViewModel = koinViewModel()
+    val playlistState by playlistViewModel.state.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -375,6 +381,22 @@ fun SearchScreen(
                 selectionState.exit()
             },
             onYTPlaylistClick = {},
+        )
+    }
+    if (playlistState.showPicker) {
+        AddToPlaylistModalBottomSheet(
+            isBottomSheetVisible = true,
+            listLocalPlaylist = playlistState.localPlaylists,
+            listYouTubePlaylist = playlistState.youTubePlaylists,
+            // Existing members can still become the remembered destination.
+            videoId = null,
+            showYouTubeTab = true,
+            loadingYouTube = playlistState.loadingYouTube,
+            youTubeStatus = playlistState.youTubeStatus,
+            onRetryYouTube = playlistViewModel::refreshYouTubePlaylists,
+            onClick = playlistViewModel::chooseLocal,
+            onYTPlaylistClick = playlistViewModel::chooseYouTube,
+            onDismiss = playlistViewModel::dismissPicker,
         )
     }
     if (showBottomSheet) {
@@ -783,11 +805,24 @@ fun SearchScreen(
                                                             ),
                                                         state = resultsState,
                                                     ) {
+                                                        if (!selectionState.isActive && currentResults.any { result -> result is SongsResult || result is VideosResult }) {
+                                                            item(key = "quick-add-destination") {
+                                                                SearchQuickAddDestination(playlistState.destination) { playlistViewModel.openPicker() }
+                                                            }
+                                                        }
                                                         items(currentResults) { result ->
                                                             when (result) {
                                                                 is SongsResult -> {
                                                                     SongFullWidthItems(
                                                                         track = result.toTrack(),
+                                                                        rightView = {
+                                                                            if (!selectionState.isActive) {
+                                                                                SearchQuickAddButton(
+                                                                                    busy = result.videoId in playlistState.busy,
+                                                                                    added = playlistState.added[result.videoId]?.key == playlistState.destination?.key && playlistState.destination != null,
+                                                                                ) { playlistViewModel.quickAdd(result.toTrack().toSongEntity()) }
+                                                                            }
+                                                                        },
                                                                         isPlaying = result.videoId == currentVideoId,
                                                                         modifier = Modifier,
                                                                         onMoreClickListener = {
@@ -822,11 +857,24 @@ fun SearchScreen(
                                                                         onLongClick = { selectionState.start(it) },
                                                                         onSelectToggle = { selectionState.toggle(it) },
                                                                     )
+                                                                    if (!selectionState.isActive) {
+                                                                        SearchQuickAddReceipt(playlistState.added[result.videoId]) {
+                                                                            playlistViewModel.openPicker(result.toTrack().toSongEntity())
+                                                                        }
+                                                                    }
                                                                 }
 
                                                                 is VideosResult -> {
                                                                     SongFullWidthItems(
                                                                         track = result.toTrack(),
+                                                                        rightView = {
+                                                                            if (!selectionState.isActive) {
+                                                                                SearchQuickAddButton(
+                                                                                    busy = result.videoId in playlistState.busy,
+                                                                                    added = playlistState.added[result.videoId]?.key == playlistState.destination?.key && playlistState.destination != null,
+                                                                                ) { playlistViewModel.quickAdd(result.toTrack().toSongEntity()) }
+                                                                            }
+                                                                        },
                                                                         isPlaying = result.videoId == currentVideoId,
                                                                         modifier = Modifier,
                                                                         onMoreClickListener = {
@@ -861,6 +909,11 @@ fun SearchScreen(
                                                                         onLongClick = { selectionState.start(it) },
                                                                         onSelectToggle = { selectionState.toggle(it) },
                                                                     )
+                                                                    if (!selectionState.isActive) {
+                                                                        SearchQuickAddReceipt(playlistState.added[result.videoId]) {
+                                                                            playlistViewModel.openPicker(result.toTrack().toSongEntity())
+                                                                        }
+                                                                    }
                                                                 }
 
                                                                 is AlbumsResult -> {

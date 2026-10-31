@@ -1626,7 +1626,7 @@ internal class MediaServiceHandlerImpl(
                                             ),
                                     )
                                 }
-                                if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+                                if (player.repeatMode == PlayerConstants.REPEAT_MODE_OFF && runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
                                     Logger.w(TAG, "loadMore: Endless Queue")
                                     val lastTrack =
                                         queueData.value.data.listTracks
@@ -1656,7 +1656,7 @@ internal class MediaServiceHandlerImpl(
                         }
                 }
             }
-        } else if (runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
+        } else if (player.repeatMode == PlayerConstants.REPEAT_MODE_OFF && runBlocking { dataStoreManager.endlessQueue.first() } == TRUE) {
             Logger.w(TAG, "loadMore: Endless Queue")
             val lastTrack =
                 queueData.value.data.listTracks

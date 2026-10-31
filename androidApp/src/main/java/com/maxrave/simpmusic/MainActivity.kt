@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -108,6 +109,14 @@ class MainActivity : AppCompatActivity() {
     @ExperimentalFoundationApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Registered before Compose: child navigation and sheets get first refusal.
+        // Android 12+ otherwise backgrounds a launcher task on root Back, leaving a stale card
+        // when the playback service later exits the process.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                finishAndRemoveTask()
+            }
+        })
         loadKoinModules(
             module {
                 single<AppCompatActivity> { this@MainActivity }
@@ -268,7 +277,6 @@ class MainActivity : AppCompatActivity() {
         if (shouldStopMusicService && shouldUnbind && isFinishing) {
             viewModel.isServiceRunning = false
         }
-        unloadKoinModules(viewModelModule)
         super.onDestroy()
         Logger.d("MainActivity", "onDestroy: ")
     }

@@ -63,6 +63,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -184,6 +185,7 @@ import com.maxrave.simpmusic.ui.theme.seed
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.NowPlayingBottomSheetUIEvent
 import com.maxrave.simpmusic.viewModel.NowPlayingBottomSheetViewModel
+import com.maxrave.simpmusic.viewModel.UIEvent
 import com.maxrave.simpmusic.viewModel.SharedViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -198,6 +200,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
+import simpmusic.composeapp.generated.resources.retry
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.add_lyrics
 import simpmusic.composeapp.generated.resources.add_to_a_playlist
@@ -980,6 +983,7 @@ fun QueueBottomSheet(
     var overscrollJob by remember { mutableStateOf<Job?>(null) }
     // The row whose ⋯ was tapped, as its queue position and the track that was there.
     var moreFor by remember { mutableStateOf<Pair<Int, Track>?>(null) }
+    val controllerState by sharedViewModel.controllerState.collectAsStateWithLifecycle()
     val screenDataState by sharedViewModel.nowPlayingScreenData.collectAsStateWithLifecycle()
     val songEntity by sharedViewModel.nowPlayingState.map { it?.songEntity }.collectAsState(null)
     val queueData by musicServiceHandler.queueData.collectAsStateWithLifecycle()
@@ -1125,7 +1129,13 @@ fun QueueBottomSheet(
                     },
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                RepeatModeButton(
+                    repeatState = controllerState.repeatState,
+                    onClick = { sharedViewModel.onUIEvent(UIEvent.Repeat) },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    contentColor = rememberSurfaceDarkColors().content,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = stringResource(Res.string.now_playing),
                     style = typo().titleMedium,
@@ -2562,6 +2572,10 @@ fun AddToPlaylistModalBottomSheet(
     listLocalPlaylist: List<LocalPlaylistEntity>,
     listYouTubePlaylist: List<PlaylistsResult>,
     videoId: String? = null,
+    showYouTubeTab: Boolean = false,
+    loadingYouTube: Boolean = false,
+    youTubeStatus: String? = null,
+    onRetryYouTube: () -> Unit = {},
     onClick: (LocalPlaylistEntity) -> Unit,
     onYTPlaylistClick: (PlaylistsResult) -> Unit,
     onDismiss: () -> Unit,
@@ -2670,7 +2684,7 @@ fun AddToPlaylistModalBottomSheet(
 
                     val chipRowState = rememberScrollState()
                     var isYouTubePlaylistClicked by remember { mutableStateOf(false) }
-                    if (listYouTubePlaylist.isNotEmpty()) {
+                    if (listYouTubePlaylist.isNotEmpty() || showYouTubeTab) {
                         Row(
                             modifier =
                                 Modifier
@@ -2695,6 +2709,16 @@ fun AddToPlaylistModalBottomSheet(
                         }
                     }
 
+                    if (isYouTubePlaylistClicked && loadingYouTube) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                    }
+                    if (isYouTubePlaylistClicked && youTubeStatus != null) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(youTubeStatus, modifier = Modifier.weight(1f), style = typo().labelMedium,
+                                color = rememberSurfaceDarkColors().content)
+                            TextButton(onClick = onRetryYouTube) { Text(stringResource(Res.string.retry)) }
+                        }
+                    }
                     val keyword = query.trim()
                     val shownLocalPlaylist =
                         remember(listLocalPlaylist, keyword) { listLocalPlaylist.filter { it.title.contains(keyword, ignoreCase = true) } }

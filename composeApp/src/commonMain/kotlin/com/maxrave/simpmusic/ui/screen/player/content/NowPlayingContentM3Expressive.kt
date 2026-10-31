@@ -54,6 +54,7 @@ import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.maxrave.simpmusic.ui.component.RepeatModeButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -948,6 +949,13 @@ internal fun ColumnScope.ExpressivePlaybackControls(
         modifier = Modifier.padding(horizontal = 20.dp),
         showShuffleAndRepeat = showShuffleAndRepeat,
     )
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        RepeatModeButton(
+            repeatState = state.controllerState.repeatState,
+            onClick = { actions.onUIEvent(UIEvent.Repeat) },
+            contentColor = state.secondaryTextColor(),
+        )
+    }
 }
 
 /**

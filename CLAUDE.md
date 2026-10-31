@@ -1127,8 +1127,11 @@ After completing any of the following types of changes, the AI agent **MUST** up
 
 *This document helps AI Agents quickly understand the SimpMusic project. Update regularly when there are major changes to architecture or structure.*
 
-**Last updated**: 2026-10-31
+**Last updated**: 2026-11-01
 **Project version**: Check latest release on GitHub
 **Maintained by**: maxrave-dev and contributors
 
 - Segue personal releases use com.renz.segue and validate their own certificate in Config. Upstream F-Droid signing keys apply only to upstream package names. media3-ui depends on media3 for the shared video blend state.
+
+- **Segue 2.4.1 (2026-11-01)**: root Back explicitly finishes and removes the Android task; the service also removes its task snapshots before process shutdown. Search song/video rows now quick-add to a remembered local or YouTube destination, with per-song receipts and Change; the preference is account scoped for YouTube, playlist writes are serialized, and repeated taps cannot create duplicate quick adds. `SearchPlaylistViewModel` uses the existing playlist repositories. All three player styles and the queue show repeat mode; Repeat All/One suppress endless-radio extension. Six preference regressions run alongside the seven seamless timing tests.
+- The APK workflow builds the checked-in source, runs the thirteen regressions, aligns the universal unsigned APK for 16 KB pages and exports the public apksigner JAR with package metadata. Private signing remains local and uses the existing Segue certificate; no signing secrets are uploaded.

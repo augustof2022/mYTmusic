@@ -21,14 +21,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.maxrave.domain.mediaservice.handler.ControlState
-import com.maxrave.domain.mediaservice.handler.RepeatState
 import com.maxrave.simpmusic.extension.LeftToRight
 import com.maxrave.simpmusic.ui.icon.Pause
 import com.maxrave.simpmusic.ui.icon.PauseCircle
 import com.maxrave.simpmusic.ui.icon.PlayArrow
 import com.maxrave.simpmusic.ui.icon.PlayCircle
-import com.maxrave.simpmusic.ui.icon.Repeat
-import com.maxrave.simpmusic.ui.icon.RepeatOne
 import com.maxrave.simpmusic.ui.icon.Shuffle
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.ui.icon.SkipNext
@@ -185,50 +182,13 @@ fun PlayerControlLayout(
             }
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(smallIcon.second)
-                        .aspectRatio(1f)
-                        .clip(
-                            CircleShape,
-                        )
-                        .clickable {
-                            onUIEvent(UIEvent.Repeat)
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                Crossfade(targetState = controllerState.repeatState) { rs ->
-                    when (rs) {
-                        is RepeatState.None -> {
-                            Icon(
-                                imageVector = SimpIcons.Repeat,
-                                tint = contentColor,
-                                contentDescription = "",
-                                modifier = Modifier.size(smallIcon.first),
-                            )
-                        }
-
-                        RepeatState.All -> {
-                            Icon(
-                                imageVector = SimpIcons.Repeat,
-                                tint = activeColor,
-                                contentDescription = "",
-                                modifier = Modifier.size(smallIcon.first),
-                            )
-                        }
-
-                        RepeatState.One -> {
-                            Icon(
-                                imageVector = SimpIcons.RepeatOne,
-                                tint = activeColor,
-                                contentDescription = "",
-                                modifier = Modifier.size(smallIcon.first),
-                            )
-                        }
-                    }
-                }
-            }
+            RepeatModeButton(
+                repeatState = controllerState.repeatState,
+                onClick = { onUIEvent(UIEvent.Repeat) },
+                compact = true,
+                contentColor = contentColor,
+                activeColor = activeColor,
+            )
         }
     }
 }

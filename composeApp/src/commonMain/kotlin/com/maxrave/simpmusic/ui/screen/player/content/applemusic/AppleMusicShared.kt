@@ -42,6 +42,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import com.maxrave.simpmusic.ui.component.RepeatModeButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -108,6 +109,7 @@ import com.maxrave.simpmusic.ui.icon.StarBorder
 import com.maxrave.simpmusic.ui.icon.VolumeDown
 import com.maxrave.simpmusic.ui.icon.VolumeUp
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentActions
+import com.maxrave.simpmusic.ui.screen.player.content.secondaryTextColor
 import com.maxrave.simpmusic.ui.screen.player.content.NowPlayingContentState
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.UIEvent
@@ -1001,6 +1003,13 @@ internal fun ColumnScope.AppleMusicPlaybackControls(
         onUIEvent = actions.onUIEvent,
         showShuffleAndRepeat = showShuffleAndRepeat,
     )
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        RepeatModeButton(
+            repeatState = state.controllerState.repeatState,
+            onClick = { actions.onUIEvent(UIEvent.Repeat) },
+            contentColor = state.secondaryTextColor(),
+        )
+    }
 }
 
 /**

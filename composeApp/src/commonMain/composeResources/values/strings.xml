@@ -1052,4 +1052,24 @@
     <string name="add_lyrics_repeated_word_line">A line with word times can only have one line time</string>
     <string name="add_lyrics_bad_offset">Offset must be whole milliseconds, like [offset:+250]</string>
     <string name="add_lyrics_no_timed_lines">Add at least one timed line</string>
+
+    <string name="quick_add_action">Add to playlist</string>
+    <string name="quick_add_change">Change</string>
+    <string name="quick_add_choose">Choose a playlist for quick add</string>
+    <string name="quick_add_target">Add to: %1$s</string>
+    <string name="quick_add_added">Added to %1$s</string>
+    <string name="quick_add_local">%1$s · Local</string>
+    <string name="quick_add_youtube">%1$s · YouTube</string>
+    <string name="quick_add_sign_in">Sign in to YouTube in Settings to add to your YouTube playlists.</string>
+    <string name="quick_add_youtube_failed">Could not load YouTube playlists. Check your connection and sign-in.</string>
+    <string name="quick_add_choose_again">This playlist is no longer available. Choose another playlist.</string>
+    <string name="repeat_mode_off">Repeat: Off</string>
+    <string name="repeat_mode_all">Repeat: Playlist</string>
+    <string name="repeat_mode_one">Repeat: Song</string>
+    <string name="repeat_short_off">Off</string>
+    <string name="repeat_short_all">All</string>
+    <string name="repeat_short_one">1</string>
+    <string name="repeat_cycle_hint">Change repeat mode: off, playlist, song</string>
+    <string name="quick_add_youtube_add_failed">Could not add to this YouTube playlist. Check your connection, sign-in, and permission to edit it.</string>
+    <string name="quick_add_sync_failed">Saved to the local playlist. YouTube sync failed; check your connection and sign-in.</string>
 </resources>
