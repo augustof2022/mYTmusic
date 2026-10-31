@@ -31,6 +31,10 @@ import com.maxrave.simpmusic.viewModel.PlaylistUIState.Error
 import com.maxrave.simpmusic.viewModel.PlaylistUIState.Loading
 import com.maxrave.simpmusic.viewModel.PlaylistUIState.Success
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
+import com.maxrave.domain.manager.DataStoreManager
+import com.maxrave.simpmusic.utils.QuickAddDestination
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -57,6 +61,8 @@ import simpmusic.composeapp.generated.resources.shuffle
 import simpmusic.composeapp.generated.resources.shuffle_not_available
 import simpmusic.composeapp.generated.resources.synced
 import simpmusic.composeapp.generated.resources.syncing
+import simpmusic.composeapp.generated.resources.youtube_playlist_deleted
+import simpmusic.composeapp.generated.resources.youtube_song_removed
 import simpmusic.composeapp.generated.resources.view_count
 
 class PlaylistViewModel(
@@ -64,6 +70,67 @@ class PlaylistViewModel(
     private val localPlaylistRepository: LocalPlaylistRepository,
     private val playlistRepository: PlaylistRepository,
 ) : BaseViewModel() {
+    private val dataStoreManager: DataStoreManager by inject()
+    private val _deleted = MutableStateFlow<String?>(null)
+    val deleted: StateFlow<String?> = _deleted
+    private val _mutationBusy = MutableStateFlow(false)
+    val mutationBusy: StateFlow<Boolean> = _mutationBusy
+
+    fun deleteYouTubePlaylist(id: String) {
+        if (_mutationBusy.value) return
+        _mutationBusy.value = true
+        viewModelScope.launch {
+            try {
+                playlistRepository.deleteYouTubePlaylist(id).collect { result ->
+                    when (result) {
+                        is Resource.Success -> {
+                            val saved = QuickAddDestination.decode(dataStoreManager.getString(QuickAddDestination.PREFERENCE_KEY).first())
+                            if (saved?.source == QuickAddDestination.Source.YOUTUBE && saved.id.removePrefix("VL") == id.removePrefix("VL")) {
+                                dataStoreManager.putString(QuickAddDestination.PREFERENCE_KEY, "")
+                            }
+                            _deleted.value = id.removePrefix("VL")
+                            makeToast(getString(Res.string.youtube_playlist_deleted))
+                        }
+                        is Resource.Error -> makeToast(result.message)
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (error: Exception) { makeToast(error.message ?: getString(Res.string.error)) }
+            finally { _mutationBusy.value = false }
+        }
+    }
+
+    fun removeYouTubeSong(id: String, track: Track) {
+        val entryId = track.playlistSetVideoId ?: return
+        if (_mutationBusy.value) return
+        _mutationBusy.value = true
+        viewModelScope.launch {
+            try {
+                playlistRepository.removeYouTubePlaylistItem(id, track.videoId, entryId).collect { result ->
+                    when (result) {
+                        is Resource.Success -> {
+                            val index = _tracks.value.indexOfFirst { it.playlistSetVideoId == entryId }
+                            _tracks.update { it.filterNot { item -> item.playlistSetVideoId == entryId } }
+                            _uiState.update { state -> val data = state.data; if (state is Success && data != null) Success(data.copy(trackCount = (data.trackCount - 1).coerceAtLeast(0))) else state }
+                            val cached = _playlistEntity.value
+                            if (cached != null) {
+                                val ids = cached.tracks?.toMutableList()
+                                if (ids != null && index in ids.indices && ids[index] == track.videoId) ids.removeAt(index)
+                                val updated = cached.copy(tracks = ids, trackCount = (cached.trackCount - 1).coerceAtLeast(0))
+                                _playlistEntity.value = updated
+                                playlistRepository.insertAndReplacePlaylist(updated)
+                            }
+                            makeToast(getString(Res.string.youtube_song_removed))
+                        }
+                        is Resource.Error -> makeToast(result.message)
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (error: Exception) { makeToast(error.message ?: getString(Res.string.error)) }
+            finally { _mutationBusy.value = false }
+        }
+    }
+
     val downloadUtils: DownloadHandler by inject<DownloadHandler>()
     private var _uiState = MutableStateFlow<PlaylistUIState>(Loading)
     val uiState: StateFlow<PlaylistUIState> = _uiState
@@ -181,6 +248,7 @@ class PlaylistViewModel(
     }
 
     fun getData(id: String) {
+        _deleted.value = null
         resetData()
         viewModelScope.launch {
             // Check radio
@@ -249,6 +317,7 @@ class PlaylistViewModel(
                                                 description = data.first.description,
                                                 trackCount = data.first.trackCount,
                                                 year = data.first.year,
+                                                isEditable = data.first.isEditable,
                                                 shuffleEndpoint = data.first.shuffleEndpoint,
                                                 radioEndpoint = data.first.radioEndpoint,
                                             ),

@@ -22,6 +22,8 @@ import com.maxrave.domain.data.type.ChartItem
 import com.maxrave.domain.data.type.PlaylistType
 import com.maxrave.domain.extension.now
 import com.maxrave.domain.manager.DataStoreManager
+import com.maxrave.domain.utils.YouTubePlaylistPolicy
+import kotlinx.coroutines.CancellationException
 import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.domain.utils.isRadioMix
@@ -225,22 +227,18 @@ internal class PlaylistRepositoryImpl(
                             result.contents
                                 ?.singleColumnBrowseResultsRenderer
                                 ?.tabs
-                                ?.get(
-                                    0,
-                                )?.tabRenderer
+                                ?.getOrNull(0)?.tabRenderer
                                 ?.content
                                 ?.sectionListRenderer
                                 ?.contents
-                                ?.get(
-                                    0,
-                                )?.musicPlaylistShelfRenderer
+                                ?.getOrNull(0)?.musicPlaylistShelfRenderer
                                 ?.contents
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.secondaryContents
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicPlaylistShelfRenderer
                                     ?.contents
                         if (data != null) {
@@ -254,22 +252,22 @@ internal class PlaylistRepositoryImpl(
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.tabs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.tabRenderer
                                     ?.content
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicResponsiveHeaderRenderer
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.tabs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.tabRenderer
                                     ?.content
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicEditablePlaylistDetailHeaderRenderer
                                     ?.header
                                     ?.musicResponsiveHeaderRenderer
@@ -326,22 +324,18 @@ internal class PlaylistRepositoryImpl(
                             result.contents
                                 ?.singleColumnBrowseResultsRenderer
                                 ?.tabs
-                                ?.get(
-                                    0,
-                                )?.tabRenderer
+                                ?.getOrNull(0)?.tabRenderer
                                 ?.content
                                 ?.sectionListRenderer
                                 ?.contents
-                                ?.get(
-                                    0,
-                                )?.musicPlaylistShelfRenderer
+                                ?.getOrNull(0)?.musicPlaylistShelfRenderer
                                 ?.contents
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.secondaryContents
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicPlaylistShelfRenderer
                                     ?.contents
                         if (data != null) {
@@ -354,22 +348,22 @@ internal class PlaylistRepositoryImpl(
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.tabs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.tabRenderer
                                     ?.content
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicResponsiveHeaderRenderer
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.tabs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.tabRenderer
                                     ?.content
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicEditablePlaylistDetailHeaderRenderer
                                     ?.header
                                     ?.musicResponsiveHeaderRenderer
@@ -458,22 +452,18 @@ internal class PlaylistRepositoryImpl(
                             result.contents
                                 ?.singleColumnBrowseResultsRenderer
                                 ?.tabs
-                                ?.get(
-                                    0,
-                                )?.tabRenderer
+                                ?.getOrNull(0)?.tabRenderer
                                 ?.content
                                 ?.sectionListRenderer
                                 ?.contents
-                                ?.get(
-                                    0,
-                                )?.musicPlaylistShelfRenderer
+                                ?.getOrNull(0)?.musicPlaylistShelfRenderer
                                 ?.contents
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.secondaryContents
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicPlaylistShelfRenderer
                                     ?.contents
                         if (data != null) {
@@ -486,22 +476,22 @@ internal class PlaylistRepositoryImpl(
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.tabs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.tabRenderer
                                     ?.content
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicResponsiveHeaderRenderer
                                 ?: result.contents
                                     ?.twoColumnBrowseResultsRenderer
                                     ?.tabs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.tabRenderer
                                     ?.content
                                     ?.sectionListRenderer
                                     ?.contents
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.musicEditablePlaylistDetailHeaderRenderer
                                     ?.header
                                     ?.musicResponsiveHeaderRenderer
@@ -555,6 +545,44 @@ internal class PlaylistRepositoryImpl(
             }
         }.flowOn(Dispatchers.IO)
 
+    override fun createYouTubePlaylist(title: String, initialVideoId: String?): Flow<Resource<PlaylistsResult>> = flow {
+        try {
+            val name = title.trim().also { require(it.isNotEmpty()) { "Enter a playlist name." } }
+            // YouTube creates the playlist and its first song in a single request: do not add it twice.
+            val created = youTube.createPlaylist(name, initialVideoId?.let { listOf(it) }).getOrThrow()
+            val id = YouTubePlaylistPolicy.id(created.playlistId)
+            emit(Resource.Success(PlaylistsResult(author = "", browseId = "VL$id", category = "", itemCount = if (initialVideoId == null) "0" else "1",
+                resultType = "Playlist", thumbnails = emptyList(), title = name)))
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (error: Exception) { emit(Resource.Error(error.message ?: "Could not create the YouTube playlist.")) }
+    }.flowOn(Dispatchers.IO)
+
+    override fun deleteYouTubePlaylist(playlistId: String): Flow<Resource<Unit>> = flow {
+        try {
+            val id = YouTubePlaylistPolicy.id(playlistId)
+            val response = youTube.deletePlaylist(id).getOrThrow()
+            require(YouTubePlaylistPolicy.acknowledged(response.httpStatus, response.status, response.hasError, deleting = true)) {
+                "YouTube did not confirm deletion. Check your sign-in and ownership of this playlist."
+            }
+            runCatching { localDataSource.updatePlaylistLiked(liked = 0, playlistId = id) }
+            emit(Resource.Success(Unit))
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (error: Exception) { emit(Resource.Error(error.message ?: "Could not delete the YouTube playlist.")) }
+    }.flowOn(Dispatchers.IO)
+
+    override fun removeYouTubePlaylistItem(playlistId: String, videoId: String, setVideoId: String): Flow<Resource<Unit>> = flow {
+        try {
+            val id = YouTubePlaylistPolicy.id(playlistId)
+            require(videoId.isNotBlank() && setVideoId.isNotBlank()) { "Refresh the playlist before removing this entry." }
+            val response = youTube.removePlaylistEntry(id, videoId, setVideoId).getOrThrow()
+            require(YouTubePlaylistPolicy.acknowledged(response.httpStatus, response.status, response.hasError)) {
+                "YouTube did not confirm removal. Check your sign-in and permission to edit this playlist."
+            }
+            emit(Resource.Success(Unit))
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (error: Exception) { emit(Resource.Error(error.message ?: "Could not remove the song from YouTube.")) }
+    }.flowOn(Dispatchers.IO)
+
     override fun getLibraryPlaylist(): Flow<List<PlaylistsResult>?> =
         flow {
             youTube
@@ -564,15 +592,11 @@ internal class PlaylistRepositoryImpl(
                         data.contents
                             ?.singleColumnBrowseResultsRenderer
                             ?.tabs
-                            ?.get(
-                                0,
-                            )?.tabRenderer
+                            ?.getOrNull(0)?.tabRenderer
                             ?.content
                             ?.sectionListRenderer
                             ?.contents
-                            ?.get(
-                                0,
-                            )?.gridRenderer
+                            ?.getOrNull(0)?.gridRenderer
                             ?.items
                     val listItem = mutableListOf<PlaylistsResult>()
                     if (input.isNullOrEmpty()) {
@@ -683,15 +707,11 @@ internal class PlaylistRepositoryImpl(
                         data.contents
                             ?.singleColumnBrowseResultsRenderer
                             ?.tabs
-                            ?.get(
-                                0,
-                            )?.tabRenderer
+                            ?.getOrNull(0)?.tabRenderer
                             ?.content
                             ?.sectionListRenderer
                             ?.contents
-                            ?.get(
-                                0,
-                            )?.gridRenderer
+                            ?.getOrNull(0)?.gridRenderer
                             ?.items
                     val listItem = mutableListOf<PlaylistsResult>()
                     if (input.isNullOrEmpty()) {

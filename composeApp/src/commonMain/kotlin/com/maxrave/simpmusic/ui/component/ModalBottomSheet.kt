@@ -186,6 +186,7 @@ import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.NowPlayingBottomSheetUIEvent
 import com.maxrave.simpmusic.viewModel.NowPlayingBottomSheetViewModel
 import com.maxrave.simpmusic.viewModel.UIEvent
+import com.maxrave.simpmusic.viewModel.SearchPlaylistViewModel
 import com.maxrave.simpmusic.viewModel.SharedViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -200,6 +201,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
+import simpmusic.composeapp.generated.resources.youtube_delete_playlist
 import simpmusic.composeapp.generated.resources.retry
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.add_lyrics
@@ -1396,7 +1398,9 @@ fun NowPlayingBottomSheet(
             }
         }
 
-    var addToAPlaylist by remember { mutableStateOf(false) }
+    val destinationController: SearchPlaylistViewModel = koinViewModel(key = "now-playing-playlist-picker")
+    val destinationState by destinationController.state.collectAsStateWithLifecycle()
+    SearchPlaylistPicker(destinationController, destinationState)
     var artist by remember { mutableStateOf(false) }
     var mainLyricsProvider by remember { mutableStateOf(false) }
     var sleepTimer by remember { mutableStateOf(false) }
@@ -1432,21 +1436,6 @@ fun NowPlayingBottomSheet(
         }
     }
 
-    if (addToAPlaylist) {
-        AddToPlaylistModalBottomSheet(
-            isBottomSheetVisible = true,
-            listLocalPlaylist = uiState.listLocalPlaylist,
-            listYouTubePlaylist = uiState.listYouTubePlaylist,
-            onDismiss = { addToAPlaylist = false },
-            onClick = {
-                viewModel.onUIEvent(NowPlayingBottomSheetUIEvent.AddToPlaylist(it.id))
-            },
-            onYTPlaylistClick = {
-                viewModel.onUIEvent(NowPlayingBottomSheetUIEvent.AddToYouTubePlaylist(it.browseId))
-            },
-            videoId = uiState.songUIState.videoId,
-        )
-    }
     if (artist) {
         ArtistModalBottomSheet(
             isBottomSheetVisible = true,
@@ -1798,8 +1787,8 @@ fun NowPlayingBottomSheet(
                         icon = SimpIcons.PlaylistAdd,
                         text = Res.string.add_to_a_playlist,
                     ) {
-                        viewModel.resetPlaylists()
-                        addToAPlaylist = true
+                        if (song != null) destinationController.openPicker(song)
+                        else destinationController.openPickerForVideo(uiState.songUIState.videoId)
                     }
                     // A queue row is already in the queue: its own rows above move it instead.
                     if (queuePosition == null) {
@@ -2920,6 +2909,7 @@ fun PlaylistBottomSheet(
     playlistName: String,
     isYourYouTubePlaylist: Boolean,
     onEditTitle: (newTitle: String) -> Unit = {},
+    onDeleteYouTube: (() -> Unit)? = null,
     onSaveToLocal: () -> Unit,
     onAddToQueue: (() -> Unit)? = null,
     localPlaylistRepository: LocalPlaylistRepository = koinInject(),
@@ -3056,6 +3046,12 @@ fun PlaylistBottomSheet(
                         enable = !isSavedToLocal,
                     ) {
                         onSaveToLocal.invoke()
+                        hideModalBottomSheet()
+                    }
+                }
+                if (onDeleteYouTube != null) {
+                    ActionButton(icon = SimpIcons.Delete, text = Res.string.youtube_delete_playlist) {
+                        onDeleteYouTube()
                         hideModalBottomSheet()
                     }
                 }

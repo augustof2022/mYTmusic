@@ -37,7 +37,7 @@ internal fun parsePlaylistData(
             is BrowseResponse.Header.MusicDetailHeaderRenderer -> {
                 title +=
                     header.title.runs
-                        ?.get(0)
+                        ?.getOrNull(0)
                         ?.text
                 Logger.d("PlaylistParser", "title: $title")
                 if (!header.subtitle.runs.isNullOrEmpty() && header.subtitle.runs?.size!! > 2) {
@@ -45,13 +45,13 @@ internal fun parsePlaylistData(
                         Author(
                             id =
                                 header.subtitle.runs
-                                    ?.get(2)
+                                    ?.getOrNull(2)
                                     ?.navigationEndpoint
                                     ?.browseEndpoint
                                     ?.browseId ?: "",
                             name =
                                 header.subtitle.runs
-                                    ?.get(2)
+                                    ?.getOrNull(2)
                                     ?.text ?: "",
                         )
                     listAuthor.add(author)
@@ -71,7 +71,7 @@ internal fun parsePlaylistData(
                 if (!header.subtitle.runs.isNullOrEmpty() && header.subtitle.runs?.size!! > 4) {
                     year =
                         header.subtitle.runs
-                            ?.get(4)
+                            ?.getOrNull(4)
                             ?.text ?: now().year.toString()
                 }
                 header.thumbnail.croppedSquareThumbnailRenderer
@@ -86,7 +86,7 @@ internal fun parsePlaylistData(
                     header.header.musicDetailHeaderRenderer
                         ?.title
                         ?.runs
-                        ?.get(0)
+                        ?.getOrNull(0)
                         ?.text
                 Logger.d("PlaylistParser", "title: $title")
                 val author =
@@ -95,7 +95,7 @@ internal fun parsePlaylistData(
                             header.header.musicDetailHeaderRenderer
                                 ?.subtitle
                                 ?.runs
-                                ?.get(2)
+                                ?.getOrNull(2)
                                 ?.navigationEndpoint
                                 ?.browseEndpoint
                                 ?.browseId
@@ -104,7 +104,7 @@ internal fun parsePlaylistData(
                             header.header.musicDetailHeaderRenderer
                                 ?.subtitle
                                 ?.runs
-                                ?.get(2)
+                                ?.getOrNull(2)
                                 ?.text ?: "",
                     )
                 listAuthor.add(author)
@@ -118,7 +118,7 @@ internal fun parsePlaylistData(
                         header.header.musicDetailHeaderRenderer
                             ?.secondSubtitle
                             ?.runs
-                            ?.get(4)
+                            ?.getOrNull(4)
                             ?.text
                 } else if (header.header.musicDetailHeaderRenderer
                         ?.secondSubtitle
@@ -129,7 +129,7 @@ internal fun parsePlaylistData(
                         header.header.musicDetailHeaderRenderer
                             ?.secondSubtitle
                             ?.runs
-                            ?.get(2)
+                            ?.getOrNull(2)
                             ?.text
                 }
                 Logger.d("PlaylistParser", "duration: $duration")
@@ -200,7 +200,7 @@ internal fun parsePlaylistData(
                         id =
                             header.straplineTextOne
                                 ?.runs
-                                ?.get(0)
+                                ?.getOrNull(0)
                                 ?.navigationEndpoint
                                 ?.browseEndpoint
                                 ?.browseId
@@ -216,7 +216,7 @@ internal fun parsePlaylistData(
                         name =
                             header.straplineTextOne
                                 ?.runs
-                                ?.get(0)
+                                ?.getOrNull(0)
                                 ?.text
                                 ?: header.facepile
                                     ?.avatarStackViewModel
@@ -275,6 +275,9 @@ internal fun parsePlaylistData(
                     ?.text
             val track =
                 Track(
+                    playlistSetVideoId = renderer?.playlistItemData?.playlistSetVideoId ?: renderer?.menu?.menuRenderer?.items
+                        ?.firstOrNull { it.menuServiceItemRenderer?.icon?.iconType == "REMOVE_FROM_PLAYLIST" }
+                        ?.menuServiceItemRenderer?.serviceEndpoint?.playlistEditEndpoint?.actions?.firstOrNull()?.setVideoId,
                     album =
                         renderer?.let { parseSongAlbumAt(it, columns?.albumIndex) }
                             // No album column: the row still links one from its context menu, but a
@@ -351,6 +354,7 @@ internal fun parsePlaylistData(
             title = title,
             trackCount = if (trackCount == 0) listContent.size else trackCount,
             tracks = listTrack,
+            isEditable = header is BrowseResponse.Header.MusicEditablePlaylistDetailHeaderRenderer || listContent.any { it.musicResponsiveListItemRenderer?.menu?.menuRenderer?.items?.any { item -> item.menuServiceItemRenderer?.icon?.iconType == "REMOVE_FROM_PLAYLIST" } == true },
             year = year,
         )
     } else {
@@ -375,9 +379,7 @@ internal fun parseSetVideoId(
                 ?.serviceEndpoint
                 ?.playlistEditEndpoint
                 ?.actions
-                ?.get(
-                    0,
-                )?.setVideoId
+                ?.getOrNull(0)?.setVideoId
         if (videoId != null && setVideoId != null) {
             listSetVideoId.add(SetVideoIdEntity(videoId, setVideoId, playlistId))
         } else {

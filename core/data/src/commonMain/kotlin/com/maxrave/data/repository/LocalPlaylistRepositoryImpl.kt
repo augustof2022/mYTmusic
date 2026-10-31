@@ -63,6 +63,16 @@ internal class LocalPlaylistRepositoryImpl(
             localDataSource.getLocalPlaylist(id)
         }
 
+    override fun createLocalPlaylist(title: String, initialSong: SongEntity?): Flow<LocalResource<LocalPlaylistEntity>> =
+        wrapDataResource {
+            val name = title.trim().also { require(it.isNotEmpty()) { "Enter a playlist name." } }
+            if (initialSong != null) localDataSource.insertSong(initialSong)
+            val tracks = initialSong?.videoId?.let { listOf(it) }.orEmpty()
+            val playlist = LocalPlaylistEntity(title = name, tracks = tracks)
+            val id = localDataSource.insertLocalPlaylistWithTracks(playlist, tracks)
+            playlist.copy(id = id)
+        }
+
     override fun getAllLocalPlaylists(): Flow<List<LocalPlaylistEntity>> =
         flow {
             val list =

@@ -40,6 +40,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -47,7 +49,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -150,6 +151,13 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
+import simpmusic.composeapp.generated.resources.youtube_delete_playlist
+import simpmusic.composeapp.generated.resources.youtube_delete_confirmation
+import simpmusic.composeapp.generated.resources.youtube_remove_confirmation
+import simpmusic.composeapp.generated.resources.youtube_remove_song
+import simpmusic.composeapp.generated.resources.cancel
+import simpmusic.composeapp.generated.resources.delete
+import simpmusic.composeapp.generated.resources.remove
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.album_length
 import simpmusic.composeapp.generated.resources.baseline_downloaded
@@ -178,6 +186,25 @@ fun PlaylistScreen(
     val id = playlistId.removePrefix("VL")
     val tag = "PlaylistScreen"
 
+    val deleted by viewModel.deleted.collectAsStateWithLifecycle()
+    val mutationBusy by viewModel.mutationBusy.collectAsStateWithLifecycle()
+    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf<Track?>(null) }
+    LaunchedEffect(deleted, id) { if (deleted == id) navController.navigateUp() }
+    if (confirmDelete) {
+        AlertDialog(onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(Res.string.youtube_delete_playlist)) },
+            text = { Text(stringResource(Res.string.youtube_delete_confirmation, (viewModel.uiState.value as? PlaylistUIState.Success)?.data?.title.orEmpty())) },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.deleteYouTubePlaylist(id) }, enabled = !mutationBusy) { Text(stringResource(Res.string.delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(Res.string.cancel)) } })
+    }
+    confirmRemove?.let { selected ->
+        AlertDialog(onDismissRequest = { confirmRemove = null },
+            title = { Text(stringResource(Res.string.youtube_remove_song)) },
+            text = { Text(stringResource(Res.string.youtube_remove_confirmation, selected.title)) },
+            confirmButton = { TextButton(onClick = { confirmRemove = null; viewModel.removeYouTubeSong(id, selected) }, enabled = !mutationBusy) { Text(stringResource(Res.string.remove)) } },
+            dismissButton = { TextButton(onClick = { confirmRemove = null }) { Text(stringResource(Res.string.cancel)) } })
+    }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val continuation by viewModel.continuation.collectAsStateWithLifecycle()
     val listColors by viewModel.listColors.collectAsStateWithLifecycle()
@@ -283,8 +310,8 @@ fun PlaylistScreen(
             ),
         )
     }
-    val onItemMoreClick: (videoId: String) -> Unit = { videoId ->
-        currentItem = tracks.firstOrNull { it.videoId == videoId }
+    val onItemMoreClick: (Track) -> Unit = { selected ->
+        currentItem = selected
         if (currentItem != null) {
             itemBottomSheetShow = true
         }
@@ -1062,7 +1089,7 @@ fun PlaylistScreen(
                                         forceDark = true,
                                         isPlaying = true,
                                         track = item,
-                                        onMoreClickListener = { onItemMoreClick(it) },
+                                        onMoreClickListener = { onItemMoreClick(item) },
                                         onClickListener = {
                                             Logger.w("PlaylistScreen", "index: $index")
                                             onPlaylistItemClick(it)
@@ -1083,7 +1110,7 @@ fun PlaylistScreen(
                                         forceDark = true,
                                         isPlaying = false,
                                         track = item,
-                                        onMoreClickListener = { onItemMoreClick(it) },
+                                        onMoreClickListener = { onItemMoreClick(item) },
                                         onClickListener = {
                                             Logger.w("PlaylistScreen", "index: $index")
                                             onPlaylistItemClick(it)
@@ -1286,7 +1313,8 @@ fun PlaylistScreen(
                     )
                 }
                 if (itemBottomSheetShow && currentItem != null) {
-                    val track = currentItem?.toSongEntity() ?: return@Crossfade
+                    val selectedTrack = currentItem ?: return@Crossfade
+                    val track = selectedTrack.toSongEntity()
                     NowPlayingBottomSheet(
                         onDismiss = {
                             itemBottomSheetShow = false
@@ -1294,6 +1322,9 @@ fun PlaylistScreen(
                         },
                         navController = navController,
                         song = track,
+                        onDelete = if (selectedTrack.playlistSetVideoId != null && !data.isRadio && !mutationBusy) {
+                            { confirmRemove = selectedTrack }
+                        } else null,
                     )
                 }
                 if (playlistBottomSheetShow) {
@@ -1309,7 +1340,8 @@ fun PlaylistScreen(
                         onDismiss = { playlistBottomSheetShow = false },
                         playlistId = data.id,
                         playlistName = data.title,
-                        isYourYouTubePlaylist = isYourYouTubePlaylist && !data.isRadio,
+                        isYourYouTubePlaylist = (isYourYouTubePlaylist || data.isEditable) && !data.isRadio,
+                        onDeleteYouTube = if ((isYourYouTubePlaylist || data.isEditable) && !data.isRadio && !mutationBusy) { { confirmDelete = true } } else null,
                         onSaveToLocal = {
                             viewModel.getFullTracks { track ->
                                 viewModel.saveToLocal(track)

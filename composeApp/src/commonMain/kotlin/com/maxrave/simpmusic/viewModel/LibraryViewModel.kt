@@ -223,9 +223,12 @@ class LibraryViewModel(
     fun getYouTubePlaylist() {
         _youTubePlaylist.value = LocalResource.Loading()
         viewModelScope.launch {
-            playlistRepository.getLibraryPlaylist().collect { data ->
-                _youTubePlaylist.value = LocalResource.Success(data ?: emptyList())
-            }
+            try {
+                playlistRepository.getLibraryPlaylist().collect { data ->
+                    _youTubePlaylist.value = LocalResource.Success(data ?: emptyList())
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+              catch (error: Exception) { _youTubePlaylist.value = LocalResource.Error(error.message ?: "Could not load YouTube playlists.") }
         }
     }
 

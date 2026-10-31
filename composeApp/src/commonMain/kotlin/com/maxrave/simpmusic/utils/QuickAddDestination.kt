@@ -16,6 +16,7 @@ data class QuickAddDestination(
     fun belongsTo(accountKey: String): Boolean = source == Source.LOCAL || (accountKey.isNotEmpty() && account == accountKey)
 
     companion object {
+        const val PREFERENCE_KEY = "search_quick_add_destination_v1"
         fun decode(value: String?): QuickAddDestination? {
             val fields = value?.split('\n', limit = 5) ?: return null
             if (fields.size != 5 || fields[0] != "1" || fields[2].isBlank() || fields[4].isBlank()) return null

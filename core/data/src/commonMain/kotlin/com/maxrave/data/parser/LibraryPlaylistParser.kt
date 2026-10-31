@@ -15,7 +15,7 @@ internal fun parseLibraryPlaylist(input: List<GridRenderer.Item>): List<Playlist
                             author =
                                 it.subtitle
                                     ?.runs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.text ?: "",
                             browseId = it.navigationEndpoint?.browseEndpoint?.browseId ?: "",
                             category = "",
@@ -30,7 +30,7 @@ internal fun parseLibraryPlaylist(input: List<GridRenderer.Item>): List<Playlist
                             title =
                                 it.title
                                     ?.runs
-                                    ?.get(0)
+                                    ?.getOrNull(0)
                                     ?.text ?: "",
                         ),
                     )
@@ -47,7 +47,7 @@ internal fun parseNextLibraryPlaylist(input: List<MusicTwoRowItemRenderer>): Lis
             author =
                 it.subtitle
                     ?.runs
-                    ?.get(0)
+                    ?.getOrNull(0)
                     ?.text ?: "",
             browseId = it.navigationEndpoint?.browseEndpoint?.browseId ?: "",
             category = "",
@@ -62,7 +62,7 @@ internal fun parseNextLibraryPlaylist(input: List<MusicTwoRowItemRenderer>): Lis
             title =
                 it.title
                     ?.runs
-                    ?.get(0)
+                    ?.getOrNull(0)
                     ?.text ?: "",
         )
     }

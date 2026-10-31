@@ -67,6 +67,8 @@ import com.maxrave.simpmusic.extension.ultraThinBarStyle
 import com.maxrave.simpmusic.getPlatform
 import com.maxrave.simpmusic.ui.component.AddToPlaylistModalBottomSheet
 import com.maxrave.simpmusic.ui.component.Chip
+import com.maxrave.simpmusic.ui.component.SearchPlaylistPicker
+import com.maxrave.simpmusic.viewModel.SearchPlaylistViewModel
 import com.maxrave.simpmusic.ui.component.CreateLocalPlaylistSheet
 import com.maxrave.simpmusic.ui.component.EndOfPage
 import com.maxrave.simpmusic.ui.component.GridLibraryPlaylist
@@ -169,6 +171,26 @@ fun LibraryScreen(
         mutableStateOf(0.dp)
     }
     var showAddSheet by remember { mutableStateOf(false) }
+    val playlistCreator: SearchPlaylistViewModel = koinViewModel(key = "library-playlist-creator")
+    val creatorState by playlistCreator.state.collectAsStateWithLifecycle()
+    var creatorWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (viewModel.getYouTubeLoggedIn()) viewModel.getYouTubePlaylist() }
+    LaunchedEffect(showAddSheet) {
+        if (showAddSheet) {
+            playlistCreator.openPicker(createOnly = true)
+            showAddSheet = false
+        }
+    }
+    LaunchedEffect(creatorState.showPicker) {
+        if (creatorState.showPicker) creatorWasOpen = true
+        else if (creatorWasOpen) {
+            creatorWasOpen = false
+            viewModel.getLocalPlaylist()
+            if (viewModel.getYouTubeLoggedIn()) viewModel.getYouTubePlaylist()
+        }
+    }
+    SearchPlaylistPicker(playlistCreator, creatorState)
+
 
     LaunchedEffect(nowPlaying) {
         Logger.w("LibraryScreen", "Check nowPlaying: $nowPlaying")
@@ -428,12 +450,6 @@ fun LibraryScreen(
     }
     sharingTaste?.let { profile ->
         ShareTasteSheet(profile = profile, onDismiss = { sharingTaste = null })
-    }
-    if (showAddSheet) {
-        CreateLocalPlaylistSheet(
-            onDismiss = { showAddSheet = false },
-            onCreate = viewModel::createPlaylist,
-        )
     }
     Column(
         Modifier

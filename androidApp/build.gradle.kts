@@ -159,6 +159,8 @@ dependencies {
     coreLibraryDesugaring(libs.desugaring)
     val debugImplementation = "debugImplementation"
     debugImplementation(libs.ui.tooling)
+    debugImplementation(libs.compose.material3.lib)
+    testImplementation(libs.junit)
     implementation(libs.activity.compose)
 
     // Custom Activity On Crash

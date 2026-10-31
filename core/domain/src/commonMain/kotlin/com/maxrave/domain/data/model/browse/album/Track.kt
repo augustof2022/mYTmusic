@@ -29,4 +29,5 @@ data class Track(
      * up with view counts. Defaulted so existing persisted queue JSON still decodes.
      */
     val views: String? = null,
+    val playlistSetVideoId: String? = null,
 )

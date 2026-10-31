@@ -47,6 +47,7 @@ import kotlin.jvm.JvmName
 
 internal fun SongItem.toTrack(): Track =
     Track(
+        playlistSetVideoId = this.setVideoId ?: this.endpoint?.playlistSetVideoId,
         album = this.album.let { Album(it?.id ?: "", it?.name ?: "") },
         artists = this.artists.map { artist -> Artist(id = artist.id ?: "", name = artist.name) },
         duration = this.duration.toString(),

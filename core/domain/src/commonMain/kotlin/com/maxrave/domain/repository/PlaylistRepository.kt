@@ -70,6 +70,12 @@ interface PlaylistRepository {
 
     fun getLibraryPlaylist(): Flow<List<PlaylistsResult>?>
 
+    fun createYouTubePlaylist(title: String, initialVideoId: String? = null): Flow<Resource<PlaylistsResult>>
+
+    fun deleteYouTubePlaylist(playlistId: String): Flow<Resource<Unit>>
+
+    fun removeYouTubePlaylistItem(playlistId: String, videoId: String, setVideoId: String): Flow<Resource<Unit>>
+
     fun getMixedForYou(): Flow<List<PlaylistsResult>?>
 
     fun updateYourYouTubePlaylistTitle(

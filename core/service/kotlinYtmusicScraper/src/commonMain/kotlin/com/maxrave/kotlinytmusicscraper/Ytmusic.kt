@@ -79,6 +79,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.io.readByteArray
 import kotlinx.serialization.ExperimentalSerializationApi
+import com.maxrave.kotlinytmusicscraper.models.body.DeletePlaylistBody
 import kotlinx.serialization.json.Json
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.serialization.XML
@@ -533,6 +534,11 @@ class Ytmusic {
                 append(HttpHeaders.Accept, "text/xml; charset=UTF-8")
             }
         }
+
+    suspend fun deleteYouTubePlaylist(playlistId: String) = httpClient.post("playlist/delete") {
+        ytClient(WEB_REMIX, setLogin = true)
+        setBody(DeletePlaylistBody(context = WEB_REMIX.toContext(locale, visitorData), playlistId = playlistId.removePrefix("VL")))
+    }
 
     suspend fun createYouTubePlaylist(
         title: String,

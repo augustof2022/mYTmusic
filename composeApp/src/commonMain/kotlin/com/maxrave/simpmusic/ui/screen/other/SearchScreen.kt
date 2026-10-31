@@ -122,6 +122,7 @@ import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
 import com.maxrave.simpmusic.ui.component.PlaylistFullWidthItems
 import com.maxrave.simpmusic.ui.component.ShimmerSearchItem
 import com.maxrave.simpmusic.ui.component.SimpMusicChartButton
+import com.maxrave.simpmusic.ui.component.SearchPlaylistPicker
 import com.maxrave.simpmusic.ui.component.SearchFavoriteButton
 import com.maxrave.simpmusic.ui.component.SearchQuickAddButton
 import com.maxrave.simpmusic.ui.component.SearchQuickAddDestination
@@ -385,22 +386,19 @@ fun SearchScreen(
             onYTPlaylistClick = {},
         )
     }
-    if (playlistState.showPicker) {
-        AddToPlaylistModalBottomSheet(
-            isBottomSheetVisible = true,
-            listLocalPlaylist = playlistState.localPlaylists,
-            listYouTubePlaylist = playlistState.youTubePlaylists,
-            // Existing members can still become the remembered destination.
-            videoId = null,
-            showYouTubeTab = true,
-            loadingYouTube = playlistState.loadingYouTube,
-            youTubeStatus = playlistState.youTubeStatus,
-            onRetryYouTube = playlistViewModel::refreshYouTubePlaylists,
-            onClick = playlistViewModel::chooseLocal,
-            onYTPlaylistClick = playlistViewModel::chooseYouTube,
-            onDismiss = playlistViewModel::dismissPicker,
-        )
+    var restoreSuggestionsAfterPicker by remember { mutableStateOf(false) }
+    LaunchedEffect(playlistState.showPicker) {
+        if (playlistState.showPicker) {
+            restoreSuggestionsAfterPicker = searchUIType == SearchUIType.SEARCH_SUGGESTIONS
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+        } else if (restoreSuggestionsAfterPicker) {
+            restoreSuggestionsAfterPicker = false
+            isExpanded = true
+            keyboardController?.hide()
+        }
     }
+    if (playlistState.showPicker) SearchPlaylistPicker(playlistViewModel, playlistState)
     if (showBottomSheet) {
         NowPlayingBottomSheet(
             onDismiss = {

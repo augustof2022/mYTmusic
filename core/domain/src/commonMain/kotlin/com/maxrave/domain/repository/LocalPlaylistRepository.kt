@@ -17,6 +17,8 @@ interface LocalPlaylistRepository {
 
     fun getAllLocalPlaylists(): Flow<List<LocalPlaylistEntity>>
 
+    fun createLocalPlaylist(title: String, initialSong: SongEntity? = null): Flow<LocalResource<LocalPlaylistEntity>>
+
     suspend fun updateLocalPlaylistTracks(
         tracks: List<String>,
         id: Long,

@@ -8,6 +8,7 @@ import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.SongRepository
 import com.maxrave.domain.repository.PlaylistRepository
+import com.maxrave.domain.utils.Resource
 import com.maxrave.domain.utils.LocalResource
 import com.maxrave.simpmusic.utils.QuickAddDestination
 import com.maxrave.simpmusic.utils.QuickAddDestination.Source
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,6 +42,10 @@ data class SearchPlaylistState(
     val localPlaylists: List<LocalPlaylistEntity> = emptyList(),
     val youTubePlaylists: List<PlaylistsResult> = emptyList(),
     val showPicker: Boolean = false,
+    val createOnly: Boolean = false,
+    val signedIn: Boolean = false,
+    val creating: Boolean = false,
+    val creationError: String? = null,
     val pendingSong: SongEntity? = null,
     val loadingYouTube: Boolean = false,
     val youTubeStatus: String? = null,
@@ -78,7 +84,7 @@ class SearchPlaylistViewModel(
                 accountKey = currentAccount
                 accountReady = true
                 val valid = previous?.takeIf { it.belongsTo(currentAccount) }
-                _state.update { it.copy(destination = valid, youTubePlaylists = emptyList(),
+                _state.update { it.copy(destination = valid, signedIn = currentAccount.isNotEmpty(), youTubePlaylists = emptyList(),
                     added = it.added.filterValues { target -> target.belongsTo(currentAccount) }) }
                 if (changedAccount) addedYouTubeItems.clear()
                 if (valid != previous) persistDestination(null)
@@ -86,6 +92,14 @@ class SearchPlaylistViewModel(
             }
         }
         refreshLocalPlaylists()
+        viewModelScope.launch {
+            var first = true
+            dataStoreManager.getString(QuickAddDestination.PREFERENCE_KEY).collect { value ->
+                if (first) { first = false; return@collect }
+                val restored = QuickAddDestination.decode(value)?.takeIf { it.belongsTo(accountKey) }
+                _state.update { it.copy(destination = restored) }
+            }
+        }
     }
 
     private fun refreshLocalPlaylists() {
@@ -133,13 +147,23 @@ class SearchPlaylistViewModel(
         if (target == null || !accountReady || !target.belongsTo(accountKey)) openPicker(song) else add(song, target)
     }
 
-    fun openPicker(song: SongEntity? = null) {
-        _state.update { it.copy(showPicker = true, pendingSong = song) }
+    fun openPickerForVideo(videoId: String) {
+        viewModelScope.launch {
+            try {
+                songRepository.getSongById(videoId).first()?.let { openPicker(it) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+              catch (error: Exception) { makeToast(error.message ?: getString(Res.string.error)) }
+        }
+    }
+
+    fun openPicker(song: SongEntity? = null, createOnly: Boolean = false) {
+        _state.update { it.copy(showPicker = true, createOnly = createOnly, pendingSong = song, creationError = null) }
         refreshLocalPlaylists()
         refreshYouTubePlaylists()
     }
 
     fun dismissPicker() {
+        if (_state.value.creating) return
         _state.update { it.copy(showPicker = false, pendingSong = null) }
     }
 
@@ -151,6 +175,58 @@ class SearchPlaylistViewModel(
             return
         }
         choose(QuickAddDestination(Source.YOUTUBE, playlist.browseId, playlist.title, accountKey))
+    }
+
+    fun createPlaylist(source: Source, title: String) {
+        if (_state.value.creating || title.isBlank()) return
+        if (source == Source.YOUTUBE && accountKey.isEmpty()) {
+            _state.update { it.copy(creationError = getString(Res.string.quick_add_sign_in)) }
+            return
+        }
+        val song = _state.value.pendingSong
+        val account = accountKey
+        _state.update { it.copy(creating = true, creationError = null) }
+        viewModelScope.launch {
+            try {
+                withTimeout(30_000L) {
+                    if (source == Source.YOUTUBE) {
+                        playlistRepository.createYouTubePlaylist(title, song?.videoId).collect { result ->
+                            when (result) {
+                                is Resource.Success -> result.data?.let { playlist ->
+                                    check(account == accountKey) { "The Google account changed. Refresh your playlists before continuing." }
+                                    _state.update { it.copy(youTubePlaylists = listOf(playlist) + it.youTubePlaylists.filterNot { p -> p.browseId == playlist.browseId }) }
+                                    created(QuickAddDestination(Source.YOUTUBE, playlist.browseId, playlist.title, account), song)
+                                }
+                                is Resource.Error -> _state.update { it.copy(creationError = result.message ?: getString(Res.string.error)) }
+                            }
+                        }
+                    } else {
+                        localPlaylistRepository.createLocalPlaylist(title, song).collect { result ->
+                            when (result) {
+                                is LocalResource.Success -> result.data?.let { playlist ->
+                                    _state.update { it.copy(localPlaylists = listOf(playlist) + it.localPlaylists.filterNot { p -> p.id == playlist.id }) }
+                                    created(QuickAddDestination(Source.LOCAL, playlist.id.toString(), playlist.title), song)
+                                }
+                                is LocalResource.Error -> _state.update { it.copy(creationError = result.message ?: getString(Res.string.error)) }
+                                is LocalResource.Loading -> Unit
+                            }
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                _state.update { it.copy(creationError = "Could not confirm creation. Refresh your playlists before trying again.") }
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) { _state.update { it.copy(creationError = e.message ?: getString(Res.string.error)) } }
+            finally { _state.update { it.copy(creating = false) } }
+        }
+    }
+
+    private fun created(target: QuickAddDestination, song: SongEntity?) {
+        destinationChosen = true
+        _state.update { it.copy(destination = target, showPicker = false, pendingSong = null,
+            added = if (song == null) it.added else it.added + (song.videoId to target)) }
+        if (song != null && target.source == Source.YOUTUBE) addedYouTubeItems.add(target.key to song.videoId)
+        persistDestination(target)
     }
 
     private fun choose(target: QuickAddDestination) {
@@ -267,6 +343,6 @@ class SearchPlaylistViewModel(
     }
 
     companion object {
-        private const val DESTINATION_KEY = "search_quick_add_destination_v1"
+        private const val DESTINATION_KEY = QuickAddDestination.PREFERENCE_KEY
     }
 }

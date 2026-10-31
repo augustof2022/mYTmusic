@@ -116,6 +116,9 @@ import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
 import kotlinx.serialization.json.Json
+import com.maxrave.kotlinytmusicscraper.models.response.PlaylistWriteResponse
+import io.ktor.client.statement.HttpResponse
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -2166,6 +2169,20 @@ class YouTube {
                     ytMusic.uploadPlaylistThumbnail(uploadId, image).bodyAsText(),
                 ).encryptedBlobId
         ytMusic.setYouTubePlaylistCustomThumbnail(playlistId, blobId).status.value
+    }
+
+    private suspend fun playlistWriteResponse(response: HttpResponse): PlaylistWriteResponse {
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        return PlaylistWriteResponse(response.status.value, body["status"]?.jsonPrimitive?.contentOrNull,
+            body["error"]?.let { it !is JsonNull } == true)
+    }
+
+    suspend fun deletePlaylist(playlistId: String) = runCatching {
+        playlistWriteResponse(ytMusic.deleteYouTubePlaylist(playlistId))
+    }
+
+    suspend fun removePlaylistEntry(playlistId: String, videoId: String, setVideoId: String) = runCatching {
+        playlistWriteResponse(ytMusic.removeItemYouTubePlaylist(playlistId, videoId, setVideoId))
     }
 
     suspend fun createPlaylist(
