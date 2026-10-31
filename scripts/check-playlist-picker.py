@@ -13,21 +13,29 @@ PACKAGE = 'com.renz.segue.dev'
 ACTIVITY = PACKAGE + '/com.maxrave.simpmusic.PlaylistPickerProbeActivity'
 
 def adb(*args, check=True):
-    return subprocess.run(['adb', *args], check=check, capture_output=True).stdout.decode(errors='replace')
+    return subprocess.run(['adb', *args], check=check, capture_output=True, timeout=50).stdout.decode(errors='replace')
 
 def dump(name='current'):
-    adb('shell', 'uiautomator', 'dump', '/sdcard/picker-window.xml', check=False)
-    data = adb('shell', 'cat', '/sdcard/picker-window.xml')
+    output = adb('shell', 'uiautomator', 'dump', '/sdcard/picker-window.xml', check=False)
+    data = adb('shell', 'cat', '/sdcard/picker-window.xml', check=False)
+    # A cold-start splash/IME transition can temporarily have no accessibility root.
+    # Retry in node(), rather than treating a missing dump as an application crash.
+    if '<?xml' not in data:
+        with (OUT / 'uiautomator-retries.txt').open('a') as log:
+            log.write(output + '\n' + data + '\n')
+        return None
     (OUT / (name + '.xml')).write_text(data)
     return ET.fromstring(data[data.index('<?xml'):])
 
 def matching(root, label=None, editable=False):
+    if root is None:
+        return []
     return [n for n in root.iter('node') if n.get('package') == PACKAGE and
             ((editable and n.get('class') == 'android.widget.EditText') or
              (not editable and (n.get('text') == label or n.get('content-desc') == label))) and
             n.get('bounds') not in [None, '[0,0][0,0]']]
 
-def node(label=None, editable=False, timeout=25):
+def node(label=None, editable=False, timeout=90):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         root = dump()
@@ -47,7 +55,7 @@ def tap(label=None, editable=False):
 
 def launch(legacy=False):
     adb('shell', 'am', 'force-stop', PACKAGE)
-    adb('shell', 'am', 'start', '-n', ACTIVITY, '--ez', 'legacy', str(legacy).lower())
+    adb('shell', 'am', 'start', '-W', '-n', ACTIVITY, '--ez', 'legacy', str(legacy).lower())
     node('Open picker')
     time.sleep(1)
 
