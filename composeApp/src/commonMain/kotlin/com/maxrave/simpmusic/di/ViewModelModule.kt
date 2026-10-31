@@ -56,7 +56,7 @@ val viewModelModule =
                 get(),
             )
         }
-        viewModel { SearchPlaylistViewModel(get(), get(), get()) }
+        viewModel { SearchPlaylistViewModel(get(), get(), get(), get()) }
         viewModel {
             SongSelectionViewModel(
                 get(),

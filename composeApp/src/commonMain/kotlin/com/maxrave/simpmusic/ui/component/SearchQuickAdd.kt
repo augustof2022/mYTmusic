@@ -16,12 +16,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.maxrave.simpmusic.ui.icon.Star
+import com.maxrave.simpmusic.ui.icon.StarBorder
 import com.maxrave.simpmusic.ui.icon.Check
 import com.maxrave.simpmusic.ui.icon.PlaylistAdd
 import com.maxrave.simpmusic.ui.icon.SimpIcons
 import com.maxrave.simpmusic.utils.QuickAddDestination
 import org.jetbrains.compose.resources.stringResource
 import simpmusic.composeapp.generated.resources.Res
+import simpmusic.composeapp.generated.resources.search_add_favorite
+import simpmusic.composeapp.generated.resources.search_remove_favorite
 import simpmusic.composeapp.generated.resources.quick_add_action
 import simpmusic.composeapp.generated.resources.quick_add_added
 import simpmusic.composeapp.generated.resources.quick_add_change
@@ -75,5 +79,16 @@ private fun QuickAddMessage(text: String, onChange: () -> Unit) {
         Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         TextButton(onClick = onChange) { Text(stringResource(Res.string.quick_add_change)) }
+    }
+}
+
+@Composable
+fun SearchFavoriteButton(liked: Boolean, busy: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = !busy) {
+        Icon(
+            imageVector = if (liked) SimpIcons.Star else SimpIcons.StarBorder,
+            contentDescription = stringResource(if (liked) Res.string.search_remove_favorite else Res.string.search_add_favorite),
+            tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
     }
 }

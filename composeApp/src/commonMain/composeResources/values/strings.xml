@@ -1072,4 +1072,6 @@
     <string name="repeat_cycle_hint">Change repeat mode: off, playlist, song</string>
     <string name="quick_add_youtube_add_failed">Could not add to this YouTube playlist. Check your connection, sign-in, and permission to edit it.</string>
     <string name="quick_add_sync_failed">Saved to the local playlist. YouTube sync failed; check your connection and sign-in.</string>
+    <string name="search_add_favorite">Add to favorites</string>
+    <string name="search_remove_favorite">Remove from favorites</string>
 </resources>

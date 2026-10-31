@@ -122,6 +122,7 @@ import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
 import com.maxrave.simpmusic.ui.component.PlaylistFullWidthItems
 import com.maxrave.simpmusic.ui.component.ShimmerSearchItem
 import com.maxrave.simpmusic.ui.component.SimpMusicChartButton
+import com.maxrave.simpmusic.ui.component.SearchFavoriteButton
 import com.maxrave.simpmusic.ui.component.SearchQuickAddButton
 import com.maxrave.simpmusic.ui.component.SearchQuickAddDestination
 import com.maxrave.simpmusic.ui.component.SearchQuickAddReceipt
@@ -145,6 +146,7 @@ import com.maxrave.simpmusic.ui.theme.LocalLiquidGlassEnabled
 import com.maxrave.simpmusic.ui.theme.typo
 import com.maxrave.simpmusic.viewModel.SearchScreenUIState
 import com.maxrave.simpmusic.viewModel.SearchType
+import com.maxrave.simpmusic.viewModel.SearchPlaylistState
 import com.maxrave.simpmusic.viewModel.SearchPlaylistViewModel
 import com.maxrave.simpmusic.viewModel.SearchViewModel
 import com.maxrave.simpmusic.viewModel.SharedViewModel
@@ -429,9 +431,22 @@ fun SearchScreen(
                         state = suggestionsState,
                         contentPadding = PaddingValues(top = searchBarHeight, bottom = 10.dp),
                     ) {
+                        if (searchScreenState.suggestYTItems.any { it is SongsResult || it is VideosResult }) {
+                            item(key = "suggestion-quick-add-destination") {
+                                SearchQuickAddDestination(playlistState.destination) { playlistViewModel.openPicker() }
+                            }
+                        }
                         items(searchScreenState.suggestYTItems) { item ->
+                            val suggestedSong = when (item) {
+                                is SongsResult -> item.toTrack().toSongEntity()
+                                is VideosResult -> item.toTrack().toSongEntity()
+                                else -> null
+                            }
                             SuggestItemRow(
                                 searchResult = item,
+                                rightActions = {
+                                    if (suggestedSong != null) SearchSongActions(suggestedSong, playlistViewModel, playlistState)
+                                },
                                 onItemClick = { item ->
                                     when (item) {
                                         is SongsResult, is VideosResult -> {
@@ -471,6 +486,11 @@ fun SearchScreen(
                                     }
                                 },
                             )
+                            if (suggestedSong != null) {
+                                SearchQuickAddReceipt(playlistState.added[suggestedSong.videoId]) {
+                                    playlistViewModel.openPicker(suggestedSong)
+                                }
+                            }
                         }
                         items(searchScreenState.suggestQueries) { suggestion ->
                             Row(
@@ -817,10 +837,7 @@ fun SearchScreen(
                                                                         track = result.toTrack(),
                                                                         rightView = {
                                                                             if (!selectionState.isActive) {
-                                                                                SearchQuickAddButton(
-                                                                                    busy = result.videoId in playlistState.busy,
-                                                                                    added = playlistState.added[result.videoId]?.key == playlistState.destination?.key && playlistState.destination != null,
-                                                                                ) { playlistViewModel.quickAdd(result.toTrack().toSongEntity()) }
+                                                                                SearchSongActions(result.toTrack().toSongEntity(), playlistViewModel, playlistState)
                                                                             }
                                                                         },
                                                                         isPlaying = result.videoId == currentVideoId,
@@ -869,10 +886,7 @@ fun SearchScreen(
                                                                         track = result.toTrack(),
                                                                         rightView = {
                                                                             if (!selectionState.isActive) {
-                                                                                SearchQuickAddButton(
-                                                                                    busy = result.videoId in playlistState.busy,
-                                                                                    added = playlistState.added[result.videoId]?.key == playlistState.destination?.key && playlistState.destination != null,
-                                                                                ) { playlistViewModel.quickAdd(result.toTrack().toSongEntity()) }
+                                                                                SearchSongActions(result.toTrack().toSongEntity(), playlistViewModel, playlistState)
                                                                             }
                                                                         },
                                                                         isPlaying = result.videoId == currentVideoId,
@@ -1235,9 +1249,23 @@ fun SearchScreen(
 }
 
 @Composable
+private fun SearchSongActions(song: SongEntity, controller: SearchPlaylistViewModel, state: SearchPlaylistState) {
+    val liked by remember(song.videoId, controller) { controller.favoriteStatus(song.videoId) }
+        .collectAsStateWithLifecycle(initialValue = false)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SearchFavoriteButton(liked = liked, busy = song.videoId in state.favoriteBusy) { controller.toggleFavorite(song) }
+        SearchQuickAddButton(
+            busy = song.videoId in state.busy,
+            added = state.destination != null && state.added[song.videoId]?.key == state.destination.key,
+        ) { controller.quickAdd(song) }
+    }
+}
+
+@Composable
 fun SuggestItemRow(
     searchResult: SearchResultType,
     onItemClick: (SearchResultType) -> Unit,
+    rightActions: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -1364,6 +1392,7 @@ fun SuggestItemRow(
                 )
             }
         }
+        rightActions?.invoke()
     }
 }
 

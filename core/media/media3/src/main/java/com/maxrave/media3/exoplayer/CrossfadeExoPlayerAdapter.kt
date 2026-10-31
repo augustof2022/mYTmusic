@@ -1397,6 +1397,12 @@ internal class CrossfadeExoPlayerAdapter(
         set(value) {
             if (internalRepeatMode == value) return
             internalRepeatMode = value
+            // A prepared automatic handoff must follow the new repeat target. An audible fade
+            // already in progress completes normally, then the next loop uses the new mode.
+            if (!isCrossfading && pendingTransitionIsAutomatic) cancelPendingTransition()
+            cancelPrecaching()
+            clearAllPrecacheInternal()
+            if (!isCrossfading) triggerPrecachingInternal()
             listeners.forEach { it.onRepeatModeChanged(value) }
         }
 
@@ -2177,57 +2183,46 @@ internal class CrossfadeExoPlayerAdapter(
      * Requiring *both* sides is what keeps the edges intact: the last album track into the first
      * track endless queue appended still crossfades, because that one is not in the set.
      */
-    private fun isWithinAlbum(): Boolean {
+    private fun isWithinAlbum(nextIndex: Int): Boolean {
         if (!skipCrossfadeInAlbum) return false
         val ids = internalAlbumTrackIds
         if (ids.isEmpty()) return false
         val current = currentMediaItem?.mediaId ?: return false
-        val next = playlist.getOrNull(getNextMediaItemIndex())?.mediaId ?: return false
+        val next = playlist.getOrNull(nextIndex)?.mediaId ?: return false
         return current in ids && next in ids
     }
 
     /**
      * Handle track end - mirrors GstreamerPlayerAdapter.handleTrackEndInternal()
      */
+    private fun automaticTransitionTarget(): Int? = AutomaticTransitionPolicy.target(
+        currentIndex = localCurrentMediaItemIndex,
+        itemCount = playlist.size,
+        repeatOne = internalRepeatMode == PlayerConstants.REPEAT_MODE_ONE,
+        nextIndex = if (hasNextMediaItem()) getNextMediaItemIndex() else null,
+    )
+
+    private fun canAutomaticallyCrossfade(target: Int?): Boolean = !isCrossfading &&
+        AutomaticTransitionPolicy.canCrossfade(
+            enabled = crossfadeEnabled,
+            suppressed = crossfadeSuppressed,
+            currentIndex = localCurrentMediaItemIndex,
+            targetIndex = target,
+            currentLive = isCurrentTrackLive(),
+            targetLive = playlist.getOrNull(target ?: -1)?.mediaId?.let(LiveStreamRegistry::isLive) == true,
+            withinAlbum = isWithinAlbum(target ?: -1),
+        )
+
     private fun handleTrackEndInternal() {
-        // While casting, track transitions are driven by the receiver queue.
-        if (isCastActive) return
-        // Check if crossfade should be used
-        val shouldCrossfade =
-            crossfadeEnabled &&
-                !crossfadeSuppressed &&
-                // Repeat One loops this track through the branch below instead of fading into the next.
-                internalRepeatMode != PlayerConstants.REPEAT_MODE_ONE &&
-                hasNextMediaItem() &&
-                !isCrossfading &&
-                !isCurrentTrackLive() &&
-                !isNextTrackLive() &&
-                !isWithinAlbum()
-
-        if (shouldCrossfade) {
-            val nextIndex = getNextMediaItemIndex()
-            triggerCrossfadeTransition(nextIndex, automatic = true)
+        if (isCastActive || isCrossfading || pendingTransitionJob?.isActive == true) return
+        val target = automaticTransitionTarget()
+        if (target != null && canAutomaticallyCrossfade(target)) {
+            triggerCrossfadeTransition(target, automatic = true)
+        } else if (target != null) {
+            // Crossfade off (or a live source): keep the normal repeat/queue behavior.
+            seekTo(target, 0)
         } else {
-            // Original behavior
-            when (internalRepeatMode) {
-                PlayerConstants.REPEAT_MODE_ONE -> {
-                    seekTo(localCurrentMediaItemIndex, 0)
-                }
-
-                PlayerConstants.REPEAT_MODE_ALL -> {
-                    if (hasNextMediaItem()) {
-                        seekToNext()
-                    }
-                }
-
-                else -> {
-                    if (hasNextMediaItem()) {
-                        seekToNext()
-                    } else {
-                        notifyEqualizerIntent(false)
-                    }
-                }
-            }
+            notifyEqualizerIntent(false)
         }
     }
 
@@ -2306,6 +2301,9 @@ internal class CrossfadeExoPlayerAdapter(
                 if (!internalPlayWhenReady || currentPlayer !== outgoing) return@launch
                 val resolvedIndex = playlist.indexOfFirst { it === target }
                 if (resolvedIndex < 0) return@launch
+                if (automatic && (automaticTransitionTarget() != resolvedIndex || !canAutomaticallyCrossfade(resolvedIndex))) return@launch
+                // Even a repeat of the same queue item uses a separate decoder at position zero.
+                check(nextPlayer !== outgoing)
 
                 secondaryPlayer = nextPlayer
                 secondaryPlayerFilter = nextFilter
@@ -2998,22 +2996,15 @@ internal class CrossfadeExoPlayerAdapter(
                                 // Add a preparation buffer (3s) so that if the next track
                                 // is NOT precached, URL resolution + buffering time doesn't
                                 // eat into the audible crossfade window.
-                                if (crossfadeEnabled &&
-                                    !crossfadeSuppressed &&
-                                    internalRepeatMode != PlayerConstants.REPEAT_MODE_ONE &&
-                                    !isCrossfading && pendingTransitionJob?.isActive != true &&
-                                    player.isPlaying &&
-                                    dur > 0 &&
-                                    pos > 0 &&
-                                    !isCurrentTrackLive() &&
-                                    !isNextTrackLive() &&
-                                    !isWithinAlbum()
+                                val nextIndex = automaticTransitionTarget()
+                                if (nextIndex != null && canAutomaticallyCrossfade(nextIndex) &&
+                                    pendingTransitionJob?.isActive != true && player.isPlaying && dur > 0 && pos > 0
                                 ) {
                                     // Account for playback speed: at higher speed, media time
                                     // is consumed faster, so wall-clock remaining is shorter
                                     val speed = internalPlaybackSpeed.coerceAtLeast(0.1f)
                                     val timeRemaining = ((dur - pos) / speed).toLong()
-                                    val nextVideoId = playlist.getOrNull(getNextMediaItemIndex())?.mediaId
+                                    val nextVideoId = playlist.getOrNull(nextIndex)?.mediaId
                                     val isPrecached = nextVideoId != null && precachedPlayers.containsKey(nextVideoId)
                                     // If next track is precached, trigger at exactly crossfadeDurationMs.
                                     // If NOT precached, trigger 3s earlier to allow preparation time.
@@ -3025,10 +3016,7 @@ internal class CrossfadeExoPlayerAdapter(
                                     )
                                     val triggerThreshold = resolvedDurationMs.toLong() + preparationBufferMs
                                     if (timeRemaining in 1..triggerThreshold) {
-                                        if (hasNextMediaItem()) {
-                                            val nextIndex = getNextMediaItemIndex()
-                                            triggerCrossfadeTransition(nextIndex, automatic = true)
-                                        }
+                                        triggerCrossfadeTransition(nextIndex, automatic = true)
                                     }
                                 }
                             }
@@ -3063,31 +3051,12 @@ internal class CrossfadeExoPlayerAdapter(
         precacheJob =
             coroutineScope.launch {
                 try {
-                    val indicesToPrecache = mutableListOf<Int>()
-
-                    val index = localCurrentMediaItemIndex
-                    for (i in 1..maxPrecacheCount) {
-                        val nextIndex =
-                            when (internalRepeatMode) {
-                                PlayerConstants.REPEAT_MODE_ALL -> {
-                                    (index + i) % playlist.size
-                                }
-                                else -> {
-                                    val next = index + i
-                                    if (next < playlist.size) next else break
-                                }
-                            }
-
-                        val nextVideoId = playlist.getOrNull(nextIndex)?.mediaId
-                        // A live broadcast is not precached: buffered ahead, it would start behind
-                        // the live edge by however long it waited in the queue.
-                        if (nextIndex != localCurrentMediaItemIndex &&
-                            !precachedPlayers.containsKey(nextVideoId) &&
-                            nextVideoId?.let(LiveStreamRegistry::isLive) != true
-                        ) {
-                            indicesToPrecache.add(nextIndex)
-                        }
-                    }
+                    // Repeat One (and a one-song Repeat All queue) needs a second prepared
+                    // copy of the CURRENT item. This never changes transport Next/Previous.
+                    val nextIndex = automaticTransitionTarget() ?: return@launch
+                    val nextVideoId = playlist.getOrNull(nextIndex)?.mediaId ?: return@launch
+                    if (precachedPlayers.containsKey(nextVideoId) || LiveStreamRegistry.isLive(nextVideoId)) return@launch
+                    val indicesToPrecache = listOf(nextIndex)
 
                     for (idx in indicesToPrecache) {
                         if (!isActive) break
@@ -3096,6 +3065,8 @@ internal class CrossfadeExoPlayerAdapter(
 
                         try {
                             val pwf = createExoPlayerInstance()
+                            pwf.player.volume = 0f
+                            pwf.player.playWhenReady = false
                             pwf.player.setMediaItem(mediaItem.toMedia3MediaItem())
                             pwf.player.prepare()
                             precachedPlayers[mediaItem.mediaId] = PrecachedPlayer(pwf.player, mediaItem, pwf.filter)

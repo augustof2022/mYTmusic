@@ -6,6 +6,7 @@ import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.data.model.searchResult.playlists.PlaylistsResult
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.repository.LocalPlaylistRepository
+import com.maxrave.domain.repository.SongRepository
 import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.utils.LocalResource
 import com.maxrave.simpmusic.utils.QuickAddDestination
@@ -16,6 +17,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -40,6 +44,7 @@ data class SearchPlaylistState(
     val loadingYouTube: Boolean = false,
     val youTubeStatus: String? = null,
     val busy: Set<String> = emptySet(),
+    val favoriteBusy: Set<String> = emptySet(),
     val added: Map<String, QuickAddDestination> = emptyMap(),
 )
 
@@ -48,6 +53,7 @@ class SearchPlaylistViewModel(
     private val dataStoreManager: DataStoreManager,
     private val localPlaylistRepository: LocalPlaylistRepository,
     private val playlistRepository: PlaylistRepository,
+    private val songRepository: SongRepository,
 ) : BaseViewModel() {
     private val _state = MutableStateFlow(SearchPlaylistState())
     val state = _state.asStateFlow()
@@ -96,6 +102,28 @@ class SearchPlaylistViewModel(
                 throw e
             } catch (e: Exception) {
                 makeToast(e.message ?: getString(Res.string.error))
+            }
+        }
+    }
+
+    fun favoriteStatus(videoId: String): Flow<Boolean> =
+        songRepository.getSongAsFlow(videoId).map { it?.liked == true }.distinctUntilChanged()
+
+    fun toggleFavorite(song: SongEntity) {
+        if (song.videoId in _state.value.favoriteBusy) return
+        _state.update { it.copy(favoriteBusy = it.favoriteBusy + song.videoId) }
+        viewModelScope.launch {
+            try {
+                val stored = songRepository.getSongById(song.videoId).first()
+                if (stored == null) songRepository.insertSong(song).first()
+                val liked = songRepository.getSongById(song.videoId).first()?.liked == true
+                songRepository.updateLikeStatus(song.videoId, if (liked) 0 else 1)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                makeToast(e.message ?: getString(Res.string.error))
+            } finally {
+                _state.update { it.copy(favoriteBusy = it.favoriteBusy - song.videoId) }
             }
         }
     }
