@@ -18,6 +18,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          cache: gradle
       - name: Prepare and publish the personal source
         shell: bash
         run: |
@@ -347,7 +348,7 @@ jobs:
           r=subprocess.run(['java','-Xmx128m','-cp',cp,'org.junit.runner.JUnitCore','com.maxrave.media3.exoplayer.SeamlessTimingTest'],check=True,capture_output=True,text=True)
           print(r.stdout);Path('timing-test-result.txt').write_text(r.stdout)
       - name: Build the unsigned release APK
-        run: ./gradlew -I personal-build.gradle :androidApp:assembleRelease -PisFullBuild=false --no-daemon --no-configuration-cache --max-workers=2 -Dorg.gradle.jvmargs=-Xmx1536m -Pkotlin.daemon.jvmargs=-Xmx1536m
+        run: ./gradlew -I personal-build.gradle :androidApp:assembleRelease -PisFullBuild=false --no-daemon --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx5g -Pkotlin.daemon.jvmargs=-Xmx1536m
       - name: Collect unsigned APK for private signing
         shell: python
         run: |
