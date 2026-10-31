@@ -1,0 +1,11 @@
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.buildTypes.getByName('release').minifyEnabled = false
+            android.buildTypes.getByName('release').shrinkResources = false
+        }
+    }
+    tasks.configureEach { task ->
+        if (task.name == 'kmpPartiallyResolvedDependenciesChecker') task.enabled = false
+    }
+}
