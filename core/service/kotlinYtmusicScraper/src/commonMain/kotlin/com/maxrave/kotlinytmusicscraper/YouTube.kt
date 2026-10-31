@@ -2172,9 +2172,19 @@ class YouTube {
     }
 
     private suspend fun playlistWriteResponse(response: HttpResponse): PlaylistWriteResponse {
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        return PlaylistWriteResponse(response.status.value, body["status"]?.jsonPrimitive?.contentOrNull,
-            body["error"]?.let { it !is JsonNull } == true)
+        val text = response.bodyAsText()
+        if (text.isBlank()) {
+            // A 204 acknowledges deletion without a JSON envelope; an empty 200 is ambiguous.
+            return PlaylistWriteResponse(response.status.value, null, response.status.value != 204)
+        }
+        val body = Json.parseToJsonElement(text)
+        return when (body) {
+            is JsonObject -> PlaylistWriteResponse(response.status.value,
+                (body["status"] as? JsonPrimitive)?.contentOrNull,
+                body["error"]?.let { it !is JsonNull } == true)
+            is JsonPrimitive -> PlaylistWriteResponse(response.status.value, body.contentOrNull, body is JsonNull)
+            else -> PlaylistWriteResponse(response.status.value, null, true)
+        }
     }
 
     suspend fun deletePlaylist(playlistId: String) = runCatching {

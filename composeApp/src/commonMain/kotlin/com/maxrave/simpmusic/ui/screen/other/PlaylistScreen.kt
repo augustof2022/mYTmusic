@@ -1322,7 +1322,7 @@ fun PlaylistScreen(
                         },
                         navController = navController,
                         song = track,
-                        onDelete = if (selectedTrack.playlistSetVideoId != null && !data.isRadio && !mutationBusy) {
+                        onDelete = if (selectedTrack.playlistSetVideoId != null && (data.isEditable || isYourYouTubePlaylist) && !data.isRadio && !mutationBusy) {
                             { confirmRemove = selectedTrack }
                         } else null,
                     )

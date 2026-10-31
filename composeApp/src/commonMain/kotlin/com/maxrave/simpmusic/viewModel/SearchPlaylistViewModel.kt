@@ -12,6 +12,7 @@ import com.maxrave.domain.utils.Resource
 import com.maxrave.domain.utils.LocalResource
 import com.maxrave.simpmusic.utils.QuickAddDestination
 import com.maxrave.simpmusic.utils.QuickAddDestination.Source
+import com.maxrave.simpmusic.utils.YouTubePlaylistEdits
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -72,6 +73,25 @@ class SearchPlaylistViewModel(
     private var youTubeJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            YouTubePlaylistEdits.changes.collect { edit ->
+                addedYouTubeItems.removeAll { (key, videoId) ->
+                    key.substringAfterLast(':').removePrefix("VL") == edit.playlistId &&
+                        (edit.videoId == null || edit.videoId == videoId)
+                }
+                _state.update { state ->
+                    state.copy(
+                        added = state.added.filterNot { (videoId, target) ->
+                            target.source == Source.YOUTUBE && target.id.removePrefix("VL") == edit.playlistId &&
+                                (edit.videoId == null || edit.videoId == videoId)
+                        },
+                        youTubePlaylists = if (edit.videoId == null) state.youTubePlaylists.filterNot {
+                            it.browseId.removePrefix("VL") == edit.playlistId
+                        } else state.youTubePlaylists,
+                    )
+                }
+            }
+        }
         viewModelScope.launch {
             val saved = QuickAddDestination.decode(dataStoreManager.getString(DESTINATION_KEY).first())
             combine(dataStoreManager.loggedIn, dataStoreManager.cookie, dataStoreManager.pageId, dataStoreManager.authUser) {

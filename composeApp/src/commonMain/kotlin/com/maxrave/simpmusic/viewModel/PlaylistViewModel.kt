@@ -33,6 +33,7 @@ import com.maxrave.simpmusic.viewModel.PlaylistUIState.Success
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.simpmusic.utils.QuickAddDestination
+import com.maxrave.simpmusic.utils.YouTubePlaylistEdits
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +85,7 @@ class PlaylistViewModel(
                 playlistRepository.deleteYouTubePlaylist(id).collect { result ->
                     when (result) {
                         is Resource.Success -> {
+                            YouTubePlaylistEdits.deleted(id)
                             val saved = QuickAddDestination.decode(dataStoreManager.getString(QuickAddDestination.PREFERENCE_KEY).first())
                             if (saved?.source == QuickAddDestination.Source.YOUTUBE && saved.id.removePrefix("VL") == id.removePrefix("VL")) {
                                 dataStoreManager.putString(QuickAddDestination.PREFERENCE_KEY, "")
@@ -109,6 +111,7 @@ class PlaylistViewModel(
                 playlistRepository.removeYouTubePlaylistItem(id, track.videoId, entryId).collect { result ->
                     when (result) {
                         is Resource.Success -> {
+                            YouTubePlaylistEdits.removed(id, track.videoId)
                             val index = _tracks.value.indexOfFirst { it.playlistSetVideoId == entryId }
                             _tracks.update { it.filterNot { item -> item.playlistSetVideoId == entryId } }
                             _uiState.update { state -> val data = state.data; if (state is Success && data != null) Success(data.copy(trackCount = (data.trackCount - 1).coerceAtLeast(0))) else state }
