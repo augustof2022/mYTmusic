@@ -1,0 +1,58 @@
+name: Test corrected Segue installation
+on:
+  push:
+    branches: [automation/test-segue-install-fix]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  install-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mYTmusic-unsigned-apk
+          repository: augustof2022/mYTmusic
+          run-id: 41280374182
+          github-token: ${{ github.token }}
+          path: old-build
+      - uses: actions/download-artifact@v4
+        with:
+          name: mYTmusic-unsigned-apk
+          repository: augustof2022/mYTmusic
+          run-id: 41292092878
+          github-token: ${{ github.token }}
+          path: new-build
+      - name: Reconstruct and verify the signed APKs
+        run: |
+          command -v zstd || (sudo apt-get update -qq && sudo apt-get install -y zstd)
+          mkdir -p diagnostic
+          base64 -d install-diagnostics/previous-apk.zst.base64 > diagnostic/previous.zst
+          base64 -d install-diagnostics/corrected-apk.zst.base64 > diagnostic/corrected.zst
+          zstd -q -d --patch-from=old-build/mYTmusic-unsigned.apk diagnostic/previous.zst -o diagnostic/previous.apk
+          zstd -q -d --patch-from=new-build/mYTmusic-unsigned.apk diagnostic/corrected.zst -o diagnostic/corrected.apk
+          echo "0fdf8712d6b00040f7699333c1f26e61ce0ab766cf4ba5c71ad2ee23c3b9ba02  diagnostic/previous.apk" | sha256sum -c -
+          echo "b33a4a6e210644140a6f46508c4323f139789aca2d9045c4289c176184ef8530  diagnostic/corrected.apk" | sha256sum -c -
+          java -jar new-build/apksigner.jar verify --min-sdk-version 23 --verbose diagnostic/corrected.apk 2>/dev/null | grep -q 'Verified using v1 scheme (JAR signing): true'
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Test upgrading the installed app on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: python3 install-diagnostics/test-corrected.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: segue-corrected-install-diagnostics
+          path: diagnostic/*-result.txt
+          if-no-files-found: ignore
+          retention-days: 3
