@@ -1,0 +1,46 @@
+name: Publish corrected Segue APK
+on:
+  push:
+    branches: [automation/publish-segue-install-fix]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the Android installation test passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run view 41300342317 --repo augustof2022/mYTmusic --json conclusion,status,headSha > /tmp/install-run.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/install-run.json') as f:
+              data=json.load(f)
+          assert data['status']=='completed' and data['conclusion']=='success'
+          assert data['headSha']=='756815af463d2029e0bb7b965a426a5a16228e14'
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: mYTmusic-unsigned-apk
+          repository: augustof2022/mYTmusic
+          run-id: 41292092878
+          github-token: ${{ github.token }}
+          path: new-build
+      - name: Reconstruct and verify the tested APK
+        run: |
+          command -v zstd || (sudo apt-get update -qq && sudo apt-get install -y zstd)
+          base64 -d install-diagnostics/corrected-apk.zst.base64 > /tmp/corrected.zst
+          zstd -q -d --patch-from=new-build/mYTmusic-unsigned.apk /tmp/corrected.zst -o Segue-Android.apk
+          echo "b33a4a6e210644140a6f46508c4323f139789aca2d9045c4289c176184ef8530  Segue-Android.apk" | sha256sum -c -
+          java -jar new-build/apksigner.jar verify --verbose --print-certs Segue-Android.apk > /tmp/signature.txt
+          grep -q 'e50ff7735f171b3f2db5bbad079f8872839c94d4d7d49bbd0714bf02dbf4872c' /tmp/signature.txt
+      - name: Replace the draft asset and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v2.4.5 Segue-Android.apk --clobber --repo augustof2022/mYTmusic
+          gh release edit v2.4.5 --repo augustof2022/mYTmusic --draft=false --latest --notes "Segue checks this repository for new app releases. This APK uses the same signing method as v2.4.4 and was tested installing over it on Android 16."
