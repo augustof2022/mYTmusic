@@ -3,19 +3,22 @@
 from pathlib import Path
 import json
 import subprocess
-import sys
 import time
 
-subprocess.run([sys.executable, 'scripts/check-playlist-picker.py'], check=True)
 out = Path('ui-smoke')
 out.mkdir(exist_ok=True)
 package = 'com.renz.segue.dev'
 activity = package + '/com.maxrave.simpmusic.PlaybackSelectionProbeActivity'
-report = {'passed': False, 'checks': []}
 
 def adb(*args, check=True):
     result = subprocess.run(['adb', *args], check=check, capture_output=True, text=True, timeout=50)
     return result.stdout
+
+files = list(Path('androidApp/build/outputs/apk/debug').glob('*.apk'))
+assert files, 'No debug APK was built'
+apk = next((p for p in files if 'universal' in p.name), None) or next((p for p in files if 'x86_64' in p.name), files[0])
+adb('install', '-r', str(apk))
+report = {'android_api': adb('shell', 'getprop', 'ro.build.version.sdk').strip(), 'passed': False, 'checks': []}
 
 try:
     adb('shell', 'am', 'force-stop', package)

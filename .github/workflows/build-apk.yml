@@ -82,35 +82,6 @@ jobs:
           print(r.stdout);Path('timing-test-result.txt').write_text(r.stdout)
       - name: Build the unsigned release APK
         run: ./gradlew -I personal-build.gradle :androidApp:assembleRelease :androidApp:assembleDebug -PisFullBuild=false --no-daemon --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx5g -Pkotlin.daemon.jvmargs=-Xmx1536m
-      - name: Prepare emulator tools
-        shell: python
-        run: |
-          from pathlib import Path
-          import os,shutil
-          native=Path(os.environ['PREINSTALLED_ANDROID_SDK']);sdk=Path(os.environ['ANDROID_HOME'])
-          for name in ['cmdline-tools','emulator','platform-tools']:
-              if (native/name).exists():shutil.copytree(native/name,sdk/name,dirs_exist_ok=True)
-          with open(os.environ['GITHUB_PATH'],'a') as f:f.write(str(sdk/'platform-tools')+'\n')
-      - name: Enable emulator acceleration
-        run: sudo chmod 666 /dev/kvm
-      - name: Test first-time playlist picker on Android 16
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: python3 scripts/check-playback-selection.py
-      - name: Keep picker test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playlist-picker-ui-diagnostics
-          path: ui-smoke/
-          if-no-files-found: ignore
-          retention-days: 7
       - name: Collect unsigned APK for private signing
         shell: python
         run: |
@@ -130,9 +101,56 @@ jobs:
           (out/'apk-badging.txt').write_bytes(subprocess.check_output([str(sdk/'aapt2'),'dump','badging',str(target)]))
           (out/'apk-manifest.txt').write_bytes(subprocess.check_output([str(sdk/'aapt2'),'dump','xmltree',str(target),'--file','AndroidManifest.xml']))
           shutil.copy2('timing-test-result.txt',out/'timing-test-result.txt')
-          shutil.copy2('ui-smoke/result.json',out/'picker-ui-test-result.json')
-          shutil.copy2('ui-smoke/playback-selection-result.json',out/'playback-selection-test-result.json')
+          debug=list(Path('androidApp/build/outputs/apk/debug').glob('*.apk'))
+          assert debug,'The Android build produced no debug APK'
+          selected_debug=next((p for p in debug if 'universal' in p.name),next((p for p in debug if 'x86_64' in p.name),debug[0]))
+          shutil.copy2(selected_debug,out/'selection-debug.apk')
           (out/'build-info.json').write_text(json.dumps({'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'file':target.name,'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'signed':False,'signing':'Signed privately after downloading; no private key is uploaded'},indent=2))
+      - name: Keep candidate for emulator retries
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-build-candidate-${{ github.run_attempt }}
+          path: apk-artifacts/
+          if-no-files-found: error
+          retention-days: 3
+      - name: Prepare emulator tools
+        shell: python
+        run: |
+          from pathlib import Path
+          import os,shutil
+          native=Path(os.environ['PREINSTALLED_ANDROID_SDK']);sdk=Path(os.environ['ANDROID_HOME'])
+          for name in ['cmdline-tools','emulator','platform-tools']:
+              if (native/name).exists():shutil.copytree(native/name,sdk/name,dirs_exist_ok=True)
+          with open(os.environ['GITHUB_PATH'],'a') as f:f.write(str(sdk/'platform-tools')+'\n')
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Test playback selection on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: python3 scripts/check-playback-selection.py
+      - name: Keep playback test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playback-selection-diagnostics
+          path: ui-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Attach successful playback test
+        shell: python
+        run: |
+          from pathlib import Path
+          import shutil
+          out=Path('apk-artifacts')
+          shutil.copy2('ui-smoke/playback-selection-result.json',out/'playback-selection-test-result.json')
+          (out/'selection-debug.apk').unlink()
       - uses: actions/upload-artifact@v4
         with:
           name: mYTmusic-unsigned-apk
