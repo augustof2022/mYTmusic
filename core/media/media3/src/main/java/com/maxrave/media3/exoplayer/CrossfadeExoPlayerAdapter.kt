@@ -21,6 +21,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
+import androidx.media3.exoplayer.source.MediaSource
 import com.maxrave.domain.data.player.AudioEffects
 import com.maxrave.domain.data.player.AudioOutput
 import com.maxrave.domain.data.player.GenericCastState
@@ -44,7 +45,6 @@ import com.maxrave.media3.audio.EqualizerCurve
 import com.maxrave.media3.audio.SleepFadeAudioProcessor
 import com.maxrave.media3.service.mediasourcefactory.isLiveStreamDetected
 import com.maxrave.media3.exoplayer.CrossfadeExoPlayerAdapter.Companion.SPEED_PITCH_STEP
-import com.maxrave.media3.service.mediasourcefactory.MergingMediaSourceFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -93,7 +93,7 @@ internal class CrossfadeExoPlayerAdapter(
     private val context: Context,
     private val coroutineScope: CoroutineScope,
     private val dataStoreManager: DataStoreManager,
-    private val mediaSourceFactory: MergingMediaSourceFactory,
+    private val mediaSourceFactory: MediaSource.Factory,
     private val audioAttributes: AudioAttributes,
     private val streamRepository: StreamRepository,
 ) : MediaPlayerInterface {
@@ -749,6 +749,8 @@ internal class CrossfadeExoPlayerAdapter(
     }
 
     override fun stop() {
+        // Record the stop immediately, even if the player-thread operation is still queued.
+        internalPlayWhenReady = false
         cancelPendingTransition()
         castRemotePlayer?.let { remote ->
             remote.stop()
@@ -804,6 +806,20 @@ internal class CrossfadeExoPlayerAdapter(
     }
 
     override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
+        seekToInternal(mediaItemIndex, positionMs, null, allowCrossfade = true)
+    }
+
+    override fun selectQueueItem(index: Int) {
+        val wasPlaying = internalPlayWhenReady && internalState == InternalState.PLAYING
+        seekToInternal(index, 0L, requestedPlayback = true, allowCrossfade = wasPlaying)
+    }
+
+    private fun seekToInternal(
+        mediaItemIndex: Int,
+        positionMs: Long,
+        requestedPlayback: Boolean?,
+        allowCrossfade: Boolean,
+    ) {
         if (mediaItemIndex !in playlist.indices) return
         coroutineScope.launch {
             transportMutex.withLock {
@@ -813,7 +829,8 @@ internal class CrossfadeExoPlayerAdapter(
                 if (isCrossfading) commitIncomingAsCurrentInternal(settle = true)
                 currentLoadJob?.cancel()
                 unpinCurrent()
-                loadAndPlayTrackInternal(mediaItemIndex, positionMs, internalPlayWhenReady)
+                if (requestedPlayback != null) internalPlayWhenReady = requestedPlayback
+                loadAndPlayTrackInternal(mediaItemIndex, positionMs, internalPlayWhenReady, allowCrossfade)
             }
         }
     }
@@ -909,6 +926,16 @@ internal class CrossfadeExoPlayerAdapter(
     // ========== Media Item Management ==========
 
     override fun setMediaItem(mediaItem: GenericMediaItem) {
+        replaceQueueWith(mediaItem, null, allowCrossfade = true)
+    }
+
+    override fun selectMediaItem(mediaItem: GenericMediaItem, playWhenReady: Boolean) {
+        // The caller's intent changes with the selection, but must never resume the old player.
+        val wasPlaying = internalPlayWhenReady && internalState == InternalState.PLAYING
+        replaceQueueWith(mediaItem, playWhenReady, allowCrossfade = wasPlaying)
+    }
+
+    private fun replaceQueueWith(mediaItem: GenericMediaItem, requestedPlayback: Boolean?, allowCrossfade: Boolean) {
         coroutineScope.launch {
             transportMutex.withLock {
                 // Preserve the audible decoder while the replacement queue loads.
@@ -929,7 +956,8 @@ internal class CrossfadeExoPlayerAdapter(
                 }
 
                 notifyTimelineChanged("TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED")
-                loadAndPlayTrackInternal(0, 0, internalPlayWhenReady)
+                if (requestedPlayback != null) internalPlayWhenReady = requestedPlayback
+                loadAndPlayTrackInternal(0, 0, internalPlayWhenReady, allowCrossfade)
             }
         }
     }
@@ -1647,13 +1675,14 @@ internal class CrossfadeExoPlayerAdapter(
         index: Int,
         startPositionMs: Long,
         shouldPlay: Boolean,
+        allowCrossfade: Boolean = true,
     ) {
         if (index !in playlist.indices) return
 
         val mediaItem = playlist[index]
         val videoId = mediaItem.mediaId
 
-        if (shouldPlay && startPositionMs == 0L && crossfadeEnabled &&
+        if (allowCrossfade && shouldPlay && startPositionMs == 0L && crossfadeEnabled &&
             !crossfadeSuppressed && !isCastActive && currentPlayer?.isPlaying == true
         ) {
             triggerCrossfadeTransition(index)

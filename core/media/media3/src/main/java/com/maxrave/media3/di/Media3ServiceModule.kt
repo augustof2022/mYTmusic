@@ -195,7 +195,7 @@ private val mediaServiceModule =
                 context = androidContext(),
                 coroutineScope = get(named(SERVICE_SCOPE)),
                 dataStoreManager = get(),
-                mediaSourceFactory = get(),
+                mediaSourceFactory = get<MergingMediaSourceFactory>(),
                 audioAttributes = get(),
                 streamRepository = get(),
             )

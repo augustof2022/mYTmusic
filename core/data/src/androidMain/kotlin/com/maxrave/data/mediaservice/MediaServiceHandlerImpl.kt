@@ -1321,8 +1321,7 @@ internal class MediaServiceHandlerImpl(
         mediaItem: GenericMediaItem,
         playWhenReady: Boolean,
     ) {
-        player.playWhenReady = playWhenReady
-        player.setMediaItem(mediaItem)
+        player.selectMediaItem(mediaItem, playWhenReady)
     }
 
     override fun clearMediaItems() {
@@ -1337,8 +1336,7 @@ internal class MediaServiceHandlerImpl(
 
     override fun playMediaItemInMediaSource(index: Int) {
         val i = if (player.shuffleModeEnabled) player.getUnshuffledIndex(index) else index
-        player.playWhenReady = true
-        player.seekTo(i, 0)
+        player.selectQueueItem(i)
     }
 
     override fun currentSongIndex(): Int = player.currentMediaItemIndex

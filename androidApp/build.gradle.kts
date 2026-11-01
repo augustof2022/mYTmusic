@@ -160,6 +160,7 @@ dependencies {
     val debugImplementation = "debugImplementation"
     debugImplementation(libs.ui.tooling)
     debugImplementation(libs.compose.material3.lib)
+    debugImplementation(projects.media3)
     testImplementation(libs.junit)
     implementation(libs.activity.compose)
 

@@ -102,7 +102,7 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: python3 scripts/check-playlist-picker.py
+          script: python3 scripts/check-playback-selection.py
       - name: Keep picker test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -131,6 +131,7 @@ jobs:
           (out/'apk-manifest.txt').write_bytes(subprocess.check_output([str(sdk/'aapt2'),'dump','xmltree',str(target),'--file','AndroidManifest.xml']))
           shutil.copy2('timing-test-result.txt',out/'timing-test-result.txt')
           shutil.copy2('ui-smoke/result.json',out/'picker-ui-test-result.json')
+          shutil.copy2('ui-smoke/playback-selection-result.json',out/'playback-selection-test-result.json')
           (out/'build-info.json').write_text(json.dumps({'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'file':target.name,'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'signed':False,'signing':'Signed privately after downloading; no private key is uploaded'},indent=2))
       - uses: actions/upload-artifact@v4
         with:

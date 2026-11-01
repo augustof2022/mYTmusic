@@ -47,6 +47,18 @@ interface MediaPlayerInterface {
     // Media item management
     fun setMediaItem(mediaItem: GenericMediaItem)
 
+    /** Select a new item and set its playback intent as one operation. */
+    fun selectMediaItem(mediaItem: GenericMediaItem, playWhenReady: Boolean) {
+        setMediaItem(mediaItem)
+        this.playWhenReady = playWhenReady
+    }
+
+    /** Select an item already in the queue and start that item. */
+    fun selectQueueItem(index: Int) {
+        seekTo(index, 0L)
+        playWhenReady = true
+    }
+
     fun addMediaItem(mediaItem: GenericMediaItem)
 
     fun addMediaItem(
