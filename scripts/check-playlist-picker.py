@@ -87,6 +87,8 @@ try:
     tap('+ Create new playlist')
     tap(editable=True)
     adb('shell', 'input', 'text', 'FirstPlaylist')
+    assert node(editable=True).get('text') == 'FirstPlaylist'
+    screenshot('create-keyboard.png')
     tap('Create')
     node('CREATED_YOUTUBE_FirstPlaylist')
     tap('Add next song')
