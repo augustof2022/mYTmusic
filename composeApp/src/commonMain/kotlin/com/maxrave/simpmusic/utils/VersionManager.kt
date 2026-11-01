@@ -31,20 +31,17 @@ object VersionManager {
 }
 
 /**
- * True when release [tag] should be offered to a build running [current]. GitHub tags carry a leading
- * "v" ("v2.3.0") and F-Droid's do not ("2.3.0"). It is offered unless it is this very version or this
- * build is already ahead of it (dev and beta builds run ahead of the latest release). A hotfix
- * ("2.3.0-hf") has the same numbers as the release it fixes, so only its name tells it apart.
+ * True only when release [tag] has a higher dotted version than this build.
  */
 internal fun isNewerRelease(
     current: String,
     tag: String,
 ): Boolean {
     val release = tag.trim().removePrefix("v")
-    return release != current && compareVersions(current, release) <= 0
+    return compareVersions(current, release) < 0
 }
 
-/** Dotted versions compared number by number, so "2.10.0" is newer than "2.9.0". A suffix such as "-hf" is ignored. */
+/** Dotted versions compared number by number, so "2.10.0" is newer than "2.9.0". */
 internal fun compareVersions(
     a: String,
     b: String,
@@ -59,3 +56,4 @@ internal fun compareVersions(
 }
 
 private fun versionNumbers(version: String): List<Int> = version.substringBefore('-').split('.').map { it.trim().toIntOrNull() ?: 0 }
+

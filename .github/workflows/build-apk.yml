@@ -60,7 +60,7 @@ jobs:
           with open(os.environ['GITHUB_ENV'],'a') as f:f.write('ANDROID_HOME='+str(sdk)+'\nANDROID_SDK_ROOT='+str(sdk)+'\n')
       - name: Bootstrap pinned Gradle
         run: ./gradlew --version --no-daemon
-      - name: Verify crossfade timing and playlist preferences
+      - name: Verify playback, playlists and Segue updates
         shell: python
         run: |
           from pathlib import Path
@@ -76,9 +76,11 @@ jobs:
               (work/(artifact+'.jar')).write_bytes(urllib.request.urlopen(f'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/{artifact}/{kotlin_version}/{artifact}-{kotlin_version}.jar').read())
           cp=os.pathsep.join(str(p) for p in lib.glob('*.jar'))
           sources=[root/'core/media/media3/src/main/java/com/maxrave/media3/exoplayer/SeamlessTiming.kt',root/'core/media/media3/src/test/java/com/maxrave/media3/exoplayer/SeamlessTimingTest.kt',root/'composeApp/src/commonMain/kotlin/com/maxrave/simpmusic/utils/QuickAddDestination.kt',root/'composeApp/src/jvmTest/kotlin/com/maxrave/simpmusic/utils/QuickAddDestinationTest.kt',root/'core/media/media3/src/main/java/com/maxrave/media3/exoplayer/AutomaticTransitionPolicy.kt',root/'core/media/media3/src/test/java/com/maxrave/media3/exoplayer/AutomaticTransitionPolicyTest.kt',root/'core/domain/src/commonMain/kotlin/com/maxrave/domain/utils/YouTubePlaylistPolicy.kt',root/'androidApp/src/test/java/com/renz/segue/YouTubePlaylistPolicyTest.kt']
+          stub=work/'BuildKonfig.kt';stub.write_text('package com.maxrave.simpmusic\nobject BuildKonfig { const val versionName = "2.4.5" }\n')
+          sources += [stub,root/'core/domain/src/commonMain/kotlin/com/maxrave/domain/data/model/update/SegueReleasePolicy.kt',root/'androidApp/src/test/java/com/renz/segue/SegueReleasePolicyTest.kt',root/'composeApp/src/commonMain/kotlin/com/maxrave/simpmusic/utils/VersionManager.kt',root/'composeApp/src/jvmTest/kotlin/com/maxrave/simpmusic/utils/SegueVersionTest.kt']
           subprocess.run(['java','-Xmx256m','-cp',cp,'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler','-no-stdlib','-no-reflect','-classpath',os.pathsep.join(str(p) for p in [stdlib,work/'junit.jar',work/'kotlin-test.jar',work/'kotlin-test-junit.jar']),'-d',str(classes),*[str(p) for p in sources]],check=True)
           cp=os.pathsep.join(str(p) for p in [stdlib,work/'junit.jar',work/'hamcrest.jar',work/'kotlin-test.jar',work/'kotlin-test-junit.jar',classes])
-          r=subprocess.run(['java','-Xmx128m','-cp',cp,'org.junit.runner.JUnitCore','com.maxrave.media3.exoplayer.SeamlessTimingTest','com.maxrave.simpmusic.utils.QuickAddDestinationTest','com.maxrave.media3.exoplayer.AutomaticTransitionPolicyTest','com.renz.segue.YouTubePlaylistPolicyTest'],check=True,capture_output=True,text=True)
+          r=subprocess.run(['java','-Xmx128m','-cp',cp,'org.junit.runner.JUnitCore','com.maxrave.media3.exoplayer.SeamlessTimingTest','com.maxrave.simpmusic.utils.QuickAddDestinationTest','com.maxrave.media3.exoplayer.AutomaticTransitionPolicyTest','com.renz.segue.YouTubePlaylistPolicyTest','com.renz.segue.SegueReleasePolicyTest','com.maxrave.simpmusic.utils.SegueVersionTest'],check=True,capture_output=True,text=True)
           print(r.stdout);Path('timing-test-result.txt').write_text(r.stdout)
       - name: Build the unsigned release APK
         run: ./gradlew -I personal-build.gradle :androidApp:assembleRelease :androidApp:assembleDebug -PisFullBuild=false --no-daemon --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx5g -Pkotlin.daemon.jvmargs=-Xmx1536m
@@ -157,3 +159,4 @@ jobs:
           path: apk-artifacts/
           if-no-files-found: error
           retention-days: 7
+

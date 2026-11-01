@@ -1,6 +1,7 @@
 package com.maxrave.data.repository
 
 import com.maxrave.domain.data.model.update.UpdateData
+import com.maxrave.domain.data.model.update.segueReleaseDownloadUrl
 import com.maxrave.domain.repository.UpdateRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.kotlinytmusicscraper.YouTube
@@ -17,12 +18,23 @@ internal class UpdateRepositoryImpl(
             youTube
                 .checkForGithubReleaseUpdate()
                 .onSuccess { response ->
+                    val downloadUrl = segueReleaseDownloadUrl(
+                        tagName = response.tagName,
+                        draft = response.draft,
+                        prerelease = response.prerelease,
+                        assets = response.assets.orEmpty().map { it?.name to it?.browserDownloadUrl },
+                    )
+                    if (downloadUrl == null) {
+                        emit(Resource.Error<UpdateData>("No published Segue APK is available"))
+                        return@onSuccess
+                    }
                     emit(
                         Resource.Success(
                             UpdateData(
                                 tagName = response.tagName ?: "",
                                 releaseTime = response.publishedAt ?: "",
                                 body = response.body ?: "",
+                                downloadUrl = downloadUrl,
                             ),
                         ),
                     )
