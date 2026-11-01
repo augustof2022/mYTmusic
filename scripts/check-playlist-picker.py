@@ -31,7 +31,8 @@ def matching(root, label=None, editable=False):
     if root is None:
         return []
     return [n for n in root.iter('node') if n.get('package') == PACKAGE and
-            ((editable and n.get('class') == 'android.widget.EditText') or
+            ((editable and n.get('class') == 'android.widget.EditText' and
+              (label is None or n.get('text') == label)) or
              (not editable and (n.get('text') == label or n.get('content-desc') == label))) and
             n.get('bounds') not in [None, '[0,0][0,0]']]
 
@@ -86,11 +87,14 @@ try:
     screenshot('picker.png')
     tap('+ Create new playlist')
     tap(editable=True)
-    adb('shell', 'input', 'text', 'FirstPlaylist')
-    assert node(editable=True).get('text') == 'FirstPlaylist'
+    # Wait for the field/IME connection after the dialog resizes, before injecting text.
+    assert node(editable=True).get('focused') == 'true'
+    time.sleep(1)
+    adb('shell', 'input', 'text', 'firstplaylist')
+    node('firstplaylist', editable=True)
     screenshot('create-keyboard.png')
     tap('Create')
-    node('CREATED_YOUTUBE_FirstPlaylist')
+    node('CREATED_YOUTUBE_firstplaylist')
     tap('Add next song')
     node('QUICK_ADD_YOUTUBE')
     report['checks'].append('Create YouTube destination without a previous choice; subsequent add reuses it')
