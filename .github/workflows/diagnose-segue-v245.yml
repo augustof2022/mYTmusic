@@ -1,0 +1,54 @@
+name: Diagnose Segue update installation
+on:
+  push:
+    branches: [automation/diagnose-segue-v245]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  install-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Save the reported APK and hide the problematic release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p diagnostic
+          gh release download v2.4.5 --repo augustof2022/mYTmusic --pattern Segue-Android.apk --dir diagnostic
+          gh release edit v2.4.5 --repo augustof2022/mYTmusic --draft
+      - uses: actions/download-artifact@v4
+        with:
+          name: mYTmusic-unsigned-apk
+          repository: augustof2022/mYTmusic
+          run-id: 41280374182
+          github-token: ${{ github.token }}
+          path: old-build
+      - name: Reconstruct the previous installed version
+        run: |
+          command -v zstd || (sudo apt-get update -qq && sudo apt-get install -y zstd)
+          base64 -d install-diagnostics/previous-apk.zst.base64 > diagnostic/previous.zst
+          zstd -q -d --patch-from=old-build/mYTmusic-unsigned.apk diagnostic/previous.zst -o diagnostic/previous.apk
+          echo "0fdf8712d6b00040f7699333c1f26e61ce0ab766cf4ba5c71ad2ee23c3b9ba02  diagnostic/previous.apk" | sha256sum -c -
+          echo "006aeb2f6df7ee49b35d10e7c26264641a2a40ef7c8ada42ed5bcc0f4b33eae3  diagnostic/Segue-Android.apk" | sha256sum -c -
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Reproduce an Android 16 update installation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: python3 install-diagnostics/reproduce.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: segue-install-diagnostics
+          path: diagnostic/*.txt
+          if-no-files-found: ignore
+          retention-days: 3
