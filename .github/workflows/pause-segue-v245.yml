@@ -1,4 +1,4 @@
-name: Pause Segue v2.4.5 release
+name: Restore Segue release after phone installation confirmed
 on:
   push:
     branches: [automation/pause-segue-v245]
@@ -8,7 +8,7 @@ jobs:
   pause:
     runs-on: ubuntu-latest
     steps:
-      - name: Keep the release as a draft during phone installation investigation
+      - name: Publish the verified release after successful phone installation
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit v2.4.5 --repo augustof2022/mYTmusic --draft
+        run: gh release edit v2.4.5 --repo augustof2022/mYTmusic --draft=false --latest
