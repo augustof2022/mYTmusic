@@ -11,7 +11,7 @@ Download and extract the private signing setup package provided in the
 conversation. Keep it private; it contains the release keystore and passwords.
 Install GitHub CLI from https://cli.github.com/ on your own computer.
 
-- Windows: run START-WINDOWS.cmd from the extracted folder.
+- Windows: run START-WINDOWS.cmd from the extracted folder. It writes and opens\n  SETUP-STATUS.txt, with an explicit success or failure stage. The final keypress\n  only closes the command window. If setup stops, share SETUP-STATUS.txt for help;\n  it records controlled messages and secret names, never private values.
 - macOS/Linux: run `python3 setup-release-secrets.py` in that folder.
 
 The setup opens GitHub's sign-in flow when needed, confirms access to

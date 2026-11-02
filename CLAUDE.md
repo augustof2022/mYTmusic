@@ -1127,7 +1127,7 @@ After completing any of the following types of changes, the AI agent **MUST** up
 
 *This document helps AI Agents quickly understand the SimpMusic project. Update regularly when there are major changes to architecture or structure.*
 
-**Last updated**: 2026-11-01
+**Last updated**: 2026-11-02
 **Project version**: Check latest release on GitHub
 **Maintained by**: maxrave-dev and contributors
 
@@ -1148,3 +1148,5 @@ After completing any of the following types of changes, the AI agent **MUST** up
 - **Segue 2.4.4 (2026-11-01)**: Android song and queue selections pass the item and playback intent together to `MediaPlayerInterface`, instead of calling `playWhenReady = true` while the old song is still selected. The crossfade adapter snapshots whether playback was active when the user selected the track and only fades when the outgoing decoder is still playing. Pause and Stop followed by selection therefore start the selected item directly; active playback retains crossfade. Stop records its playback intent immediately so a selection queued immediately afterwards cannot revive the stopped item.
 - The Android emulator runs the real adapter against generated local WAV tones in a debug-only playback probe. It checks paused and stopped selection, selection from a paused queue, and crossfade while playing; its activity and probe are excluded from release. The media source factory uses the standard `MediaSource.Factory` interface so the probe can use local audio without YouTube.
 - CI exercises the playback probe on the smaller AOSP Android 16 image (2 GB RAM), after the Google APIs emulator's System UI stalled under load. It saves an unsigned candidate and debug test APK for three days before the emulator starts so a test-only retry does not require recompiling. The unchanged picker was already tested for v2.4.3; the final v2.4.4 artifact requires the focused playback test to pass.
+
+- **Segue signing setup (2026-11-02)**: `START-WINDOWS.cmd` opens a persistent `SETUP-STATUS.txt` report, while `setup-release-secrets.ps1` captures native CLI diagnostics outside the Windows PowerShell 5.1 error pipeline and reports only controlled stages. It locates standard GitHub CLI installations, confirms all four secret names after upload, and starts the existing signed release workflow. CI executes nine real Windows PowerShell scenarios against a compiled fake CLI with dummy credentials, including authentication and failure paths; private signing material is never part of these tests.

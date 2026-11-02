@@ -21,6 +21,8 @@ on:
       - scripts/segue_release.py
       - scripts/setup-release-secrets*
       - scripts/tests/test_segue_release.py
+      - scripts/START-WINDOWS.cmd
+      - scripts/tests/test_windows_setup.ps1
 permissions:
   contents: read
 concurrency:
@@ -40,14 +42,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Parse the Windows setup tool without handling any credentials
-        shell: pwsh
-        run: |
-          $Tokens = $null
-          $Errors = $null
-          $null = [Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PWD 'scripts/setup-release-secrets.ps1'), [ref]$Tokens, [ref]$Errors)
-          if ($Errors.Count) { $Errors | Format-List; exit 1 }
+      - name: Test Windows PowerShell setup with dummy credentials
+        shell: powershell
+        run: ./scripts/tests/test_windows_setup.ps1
   release:
     needs: [checks, windows-setup]
     if: >-
