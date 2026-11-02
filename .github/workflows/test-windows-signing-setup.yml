@@ -1,0 +1,17 @@
+name: Test Windows signing setup
+on:
+  push:
+    branches: [automation/windows-signing-setup-fix]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exercise Windows PowerShell 5.1 setup with dummy credentials
+        shell: powershell
+        run: ./scripts/tests/test_windows_setup.ps1
