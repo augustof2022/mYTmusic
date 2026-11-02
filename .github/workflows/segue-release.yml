@@ -1,0 +1,103 @@
+name: Sign and release Segue
+on:
+  workflow_run:
+    workflows: [Build mYTmusic Android APK]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful main Android build run ID (blank uses latest)
+        type: string
+        required: false
+      validation_only:
+        description: Test signing without publishing an update
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/segue-release.yml
+      - scripts/segue_release.py
+      - scripts/setup-release-secrets*
+      - scripts/tests/test_segue_release.py
+permissions:
+  contents: read
+concurrency:
+  group: segue-signed-release
+  cancel-in-progress: false
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_segue_release.py' -v
+  windows-setup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Parse the Windows setup tool without handling any credentials
+        shell: pwsh
+        run: |
+          $Tokens = $null
+          $Errors = $null
+          $null = [Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'scripts/setup-release-secrets.ps1'), [ref]$Tokens, [ref]$Errors)
+          if ($Errors.Count) { $Errors | Format-List; exit 1 }
+  release:
+    needs: [checks, windows-setup]
+    if: >-
+      github.repository == 'augustof2022/mYTmusic' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Select a successful trusted Android build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/segue_release.py resolve
+      - uses: actions/download-artifact@v4
+        with:
+          name: mYTmusic-unsigned-apk
+          run-id: ${{ steps.build.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: apk-artifacts
+      - name: Sign, verify and publish a newer version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEGUE_SOURCE_SHA: ${{ steps.build.outputs.source_sha }}
+          SEGUE_VALIDATE_ONLY: ${{ github.event.inputs.validation_only || 'false' }}
+          SEGUE_KEYSTORE_BASE64: ${{ secrets.SEGUE_KEYSTORE_BASE64 }}
+          SEGUE_KEYSTORE_PASSWORD: ${{ secrets.SEGUE_KEYSTORE_PASSWORD }}
+          SEGUE_KEY_ALIAS: ${{ secrets.SEGUE_KEY_ALIAS }}
+          SEGUE_KEY_PASSWORD: ${{ secrets.SEGUE_KEY_PASSWORD }}
+        run: python3 scripts/segue_release.py release
+      - name: Keep only public signed download files
+        uses: actions/upload-artifact@v4
+        with:
+          name: Segue-signed-apk
+          path: |
+            signed-apk/Segue-Android.apk
+            signed-apk/Segue-Android-Verified.zip
+            signed-apk/segue-release.json
+            signed-apk/SHA256SUMS.txt
+          if-no-files-found: ignore
+          retention-days: 7

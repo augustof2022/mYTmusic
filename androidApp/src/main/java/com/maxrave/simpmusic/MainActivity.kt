@@ -42,6 +42,7 @@ import com.maxrave.simpmusic.service.rss.RssFeedNotifyWork
 import com.maxrave.simpmusic.service.test.notification.NotifyWork
 import com.maxrave.simpmusic.utils.ComposeResUtils
 import com.maxrave.simpmusic.utils.VersionManager
+import com.maxrave.simpmusic.utils.playbackErrorMessage
 import com.maxrave.simpmusic.viewModel.SharedViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -301,7 +302,8 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     is ToastType.PlayerError -> {
-                        runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.TIME_OUT_ERROR, type.error) }
+                        playbackErrorMessage(type.error)
+                            ?: runBlocking { ComposeResUtils.getResString(ComposeResUtils.StringType.TIME_OUT_ERROR, type.error) }
                     }
 
                     is ToastType.SponsorBlockSkip -> {

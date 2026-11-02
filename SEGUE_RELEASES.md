@@ -1,28 +1,63 @@
-# Segue Android releases
+# Segue signed updates
 
-Segue checks the latest stable GitHub release in `augustof2022/mYTmusic`.
-Pushing code alone does not create an update: the release must be published
-and contain the signed, universal Android APK named exactly `Segue-Android.apk`.
-Drafts, prereleases, malformed version tags and missing or misdirected APK
-assets are ignored. The installed version must be older than the release.
+The Android build workflow tests main and creates an unsigned candidate.
+The **Sign and release Segue** workflow then signs and publishes a newer
+version using the existing private release key stored in GitHub Actions
+repository secrets. The agent making code changes does not need the key.
 
-For each release:
+## One-time private setup
 
-1. Increase `version-name` (for example, `2.4.6`) and `version-code` in
-   `gradle/libs.versions.toml`; commit the source and wait for its Android
-   build, checks and playback test to pass.
-2. Sign the build with the existing private Segue release key. Never commit
-   the key or passwords to GitHub. Verify package `com.renz.segue`, the
-   version, and the certificate against the existing installed build.
-3. In this repository, create a GitHub release tagged `v2.4.6` (substitute
-   the version from step 1) at the commit that was built. Upload the signed
-   universal APK as `Segue-Android.apk`; add release notes and publish it
-   as a regular release, not a draft or prerelease.
+Download and extract the private signing setup package provided in the
+conversation. Keep it private; it contains the release keystore and passwords.
+Install GitHub CLI from https://cli.github.com/ on your own computer.
 
-When auto-checking is enabled, Segue checks during startup and offers the
-download if the release is newer. Android asks the user to approve installation;
-the app does not install updates silently. A missing release or an offline
-connection leaves the app usable. Users can also check in Settings.
+- Windows: run START-WINDOWS.cmd from the extracted folder.
+- macOS/Linux: run `python3 setup-release-secrets.py` in that folder.
 
-The first version with this updater still needs to be installed manually over
-the previous Segue version; older builds cannot use a feature they do not have.
+The setup opens GitHub's sign-in flow when needed, confirms access to
+`augustof2022/mYTmusic`, and sends four values directly to GitHub CLI through
+stdin (not command arguments or chat):
+
+- SEGUE_KEYSTORE_BASE64
+- SEGUE_KEYSTORE_PASSWORD
+- SEGUE_KEY_ALIAS
+- SEGUE_KEY_PASSWORD
+
+They appear under repository **Settings > Secrets and variables > Actions**.
+The setup starts a signing run, which also publishes a pending newer tested
+version if available. It verifies signing without replacing an existing
+published version when the version has not changed. Wait for that run to pass:
+https://github.com/augustof2022/mYTmusic/actions/workflows/segue-release.yml
+
+The setup does not change GitHub repository membership or expose secret
+values to future chats. Only use trusted accounts with repository write access;
+people allowed to change main's workflow code can influence how secrets are used.
+
+## Each new app release
+
+1. Make and test the app change from any authorized Codex task/account.
+2. Increase both version fields in gradle/libs.versions.toml
+   (the first automatic update after 2.4.5/66 is at least 2.4.6/67).
+3. Push or merge to main. Wait for **Build mYTmusic Android APK** and then
+   **Sign and release Segue** to succeed.
+4. The release contains Segue-Android.apk, Segue-Android-Verified.zip,
+   SHA256SUMS.txt and segue-release.json. The existing published version is
+   never overwritten; a code-only commit at the same version is not a new update.
+
+The signer checks the successful main build, source commit, candidate hash,
+package/version, regression/playback results, the pinned Android signing tool,
+and the existing certificate. Release assets are uploaded as a draft and
+checked before publication. Temporary keystore files are deleted by the job.
+
+To retry a signing/publishing failure without rebuilding, use **Run workflow**
+on Sign and release Segue, optionally supplying a successful main build run ID.
+Build artifacts expire after seven days; run the Android build again if needed.
+Use validation_only=true to test signing without creating or replacing a release.
+
+## In-app behavior
+
+Segue checks published stable releases of this repository. It offers only a
+newer version containing the exact Segue-Android.apk asset. Auto-check runs at
+startup when enabled; Settings also supports a manual check. Android still
+requires installation confirmation. A missing release or offline connection
+leaves the app usable.

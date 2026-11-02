@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: mytmusic-android
   cancel-in-progress: true
@@ -77,10 +77,10 @@ jobs:
           cp=os.pathsep.join(str(p) for p in lib.glob('*.jar'))
           sources=[root/'core/media/media3/src/main/java/com/maxrave/media3/exoplayer/SeamlessTiming.kt',root/'core/media/media3/src/test/java/com/maxrave/media3/exoplayer/SeamlessTimingTest.kt',root/'composeApp/src/commonMain/kotlin/com/maxrave/simpmusic/utils/QuickAddDestination.kt',root/'composeApp/src/jvmTest/kotlin/com/maxrave/simpmusic/utils/QuickAddDestinationTest.kt',root/'core/media/media3/src/main/java/com/maxrave/media3/exoplayer/AutomaticTransitionPolicy.kt',root/'core/media/media3/src/test/java/com/maxrave/media3/exoplayer/AutomaticTransitionPolicyTest.kt',root/'core/domain/src/commonMain/kotlin/com/maxrave/domain/utils/YouTubePlaylistPolicy.kt',root/'androidApp/src/test/java/com/renz/segue/YouTubePlaylistPolicyTest.kt']
           stub=work/'BuildKonfig.kt';stub.write_text('package com.maxrave.simpmusic\nobject BuildKonfig { const val versionName = "2.4.5" }\n')
-          sources += [stub,root/'core/domain/src/commonMain/kotlin/com/maxrave/domain/data/model/update/SegueReleasePolicy.kt',root/'androidApp/src/test/java/com/renz/segue/SegueReleasePolicyTest.kt',root/'composeApp/src/commonMain/kotlin/com/maxrave/simpmusic/utils/VersionManager.kt',root/'composeApp/src/jvmTest/kotlin/com/maxrave/simpmusic/utils/SegueVersionTest.kt']
+          sources += [root/'composeApp/src/commonMain/kotlin/com/maxrave/simpmusic/utils/PlaybackErrorMessage.kt',root/'composeApp/src/jvmTest/kotlin/com/maxrave/simpmusic/utils/PlaybackErrorMessageTest.kt',stub,root/'core/domain/src/commonMain/kotlin/com/maxrave/domain/data/model/update/SegueReleasePolicy.kt',root/'androidApp/src/test/java/com/renz/segue/SegueReleasePolicyTest.kt',root/'composeApp/src/commonMain/kotlin/com/maxrave/simpmusic/utils/VersionManager.kt',root/'composeApp/src/jvmTest/kotlin/com/maxrave/simpmusic/utils/SegueVersionTest.kt']
           subprocess.run(['java','-Xmx256m','-cp',cp,'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler','-no-stdlib','-no-reflect','-classpath',os.pathsep.join(str(p) for p in [stdlib,work/'junit.jar',work/'kotlin-test.jar',work/'kotlin-test-junit.jar']),'-d',str(classes),*[str(p) for p in sources]],check=True)
           cp=os.pathsep.join(str(p) for p in [stdlib,work/'junit.jar',work/'hamcrest.jar',work/'kotlin-test.jar',work/'kotlin-test-junit.jar',classes])
-          r=subprocess.run(['java','-Xmx128m','-cp',cp,'org.junit.runner.JUnitCore','com.maxrave.media3.exoplayer.SeamlessTimingTest','com.maxrave.simpmusic.utils.QuickAddDestinationTest','com.maxrave.media3.exoplayer.AutomaticTransitionPolicyTest','com.renz.segue.YouTubePlaylistPolicyTest','com.renz.segue.SegueReleasePolicyTest','com.maxrave.simpmusic.utils.SegueVersionTest'],check=True,capture_output=True,text=True)
+          r=subprocess.run(['java','-Xmx128m','-cp',cp,'org.junit.runner.JUnitCore','com.maxrave.media3.exoplayer.SeamlessTimingTest','com.maxrave.simpmusic.utils.QuickAddDestinationTest','com.maxrave.media3.exoplayer.AutomaticTransitionPolicyTest','com.renz.segue.YouTubePlaylistPolicyTest','com.renz.segue.SegueReleasePolicyTest','com.maxrave.simpmusic.utils.SegueVersionTest','com.maxrave.simpmusic.utils.PlaybackErrorMessageTest'],check=True,capture_output=True,text=True)
           print(r.stdout);Path('timing-test-result.txt').write_text(r.stdout)
       - name: Build the unsigned release APK
         run: ./gradlew -I personal-build.gradle :androidApp:assembleRelease :androidApp:assembleDebug -PisFullBuild=false --no-daemon --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx5g -Pkotlin.daemon.jvmargs=-Xmx1536m
@@ -97,7 +97,7 @@ jobs:
           target=out/'mYTmusic-unsigned.apk'
           subprocess.run([str(sdk/'zipalign'),'-P','16','-f','4',str(chosen),str(target)],check=True)
           subprocess.run([str(sdk/'zipalign'),'-c','-P','16','4',str(target)],check=True)
-          # Public SDK signing utility only. The private key stays on the owner's workspace.
+          # Public SDK signing utility only. Private credentials are supplied only to the separate release workflow.
           shutil.copy2(sdk/'lib/apksigner.jar',out/'apksigner.jar')
           if (sdk/'NOTICE.txt').exists():shutil.copy2(sdk/'NOTICE.txt',out/'android-build-tools-NOTICE.txt')
           (out/'apk-badging.txt').write_bytes(subprocess.check_output([str(sdk/'aapt2'),'dump','badging',str(target)]))

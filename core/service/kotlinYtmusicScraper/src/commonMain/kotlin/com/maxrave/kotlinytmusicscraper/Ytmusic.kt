@@ -10,6 +10,7 @@ import com.maxrave.kotlinytmusicscraper.models.YouTubeClient.Companion.ANDROID
 import com.maxrave.kotlinytmusicscraper.models.YouTubeClient.Companion.IOS
 import com.maxrave.kotlinytmusicscraper.models.YouTubeClient.Companion.TVHTML5
 import com.maxrave.kotlinytmusicscraper.models.YouTubeClient.Companion.WEB_REMIX
+import com.maxrave.kotlinytmusicscraper.models.YouTubeClient.Companion.WEB
 import com.maxrave.kotlinytmusicscraper.models.YouTubeLocale
 import com.maxrave.kotlinytmusicscraper.models.body.AccountMenuBody
 import com.maxrave.kotlinytmusicscraper.models.body.BrowseBody
@@ -473,12 +474,18 @@ class Ytmusic {
         playlistId: String?,
         cpn: String?,
         signatureTimestamp: Int? = null,
-    ) = httpClient.post("player") {
-        ytClient(client, setLogin = true)
+        setLogin: Boolean = true,
+    ) = httpClient.post(if (client == WEB) "https://www.youtube.com/youtubei/v1/player" else "player") {
+        ytClient(client, setLogin = setLogin)
+        if (!setLogin) headers.remove("X-Goog-Pageid")
+        if (client == WEB) {
+            headers.remove("x-origin")
+            header("x-origin", "https://www.youtube.com")
+        }
         setBody(
             PlayerBody(
                 context =
-                    client.toContext(locale, visitorData).let {
+                    client.toContext(locale, if (setLogin) visitorData else null).let {
                         if (client == TVHTML5) {
                             it.copy(
                                 thirdParty =
@@ -1434,3 +1441,4 @@ class Ytmusic {
 expect fun getCountry(): String
 
 expect fun getLanguage(): String
+

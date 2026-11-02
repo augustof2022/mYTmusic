@@ -1579,6 +1579,7 @@ class YouTube {
                                         .date
                                 epoch.daysUntil(today)
                             },
+                        setLogin = !noLogIn,
                     ).body<PlayerResponse>()
                     .let {
                         val fexp =
@@ -1646,14 +1647,41 @@ class YouTube {
                 return@runCatching Triple(cpn, tempRes.asLiveStream(liveHlsUrl), MediaType.Video)
             }
 
-            val response = newPipePlayer(videoId, tempRes, preferredAudioLanguage)
+            var response = newPipePlayer(videoId, tempRes, preferredAudioLanguage)
+            if (response == null) {
+                // Some uploads are playable on YouTube while the Music client refuses them
+                // or omits usable format metadata. Try the normal public YouTube client once.
+                // This does not change the song or replace the signed-in account.
+                Logger.w(TAG, "Music stream resolution failed for $videoId; trying YouTube metadata")
+                val webMetadata = try {
+                    ytMusic.player(
+                        WEB,
+                        videoId,
+                        playlistId,
+                        cpn,
+                        setLogin = false,
+                    ).body<PlayerResponse>()
+                } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Logger.w(TAG, "YouTube metadata fallback failed for $videoId: ${error.message}")
+                    null
+                }
+                if (webMetadata?.playabilityStatus?.status == "OK") {
+                    response = newPipePlayer(videoId, webMetadata, preferredAudioLanguage)
+                }
+            }
             if (response != null) {
                 decodedSigResponse = response
                 Logger.d(TAG, "YouTube Player found URL")
             } else {
                 Logger.d(TAG, "YouTube Player no URL found")
             }
-            if (decodedSigResponse == null) throw RuntimeException("No URL found")
+            if (decodedSigResponse == null) {
+                throw IllegalStateException(
+                    "No playable stream URL for $videoId; Music status=${tempRes.playabilityStatus.status}",
+                )
+            }
             val firstThumb =
                 decodedSigResponse.videoDetails
                     ?.thumbnail
@@ -2445,3 +2473,4 @@ class YouTube {
 
     }
 }
+
