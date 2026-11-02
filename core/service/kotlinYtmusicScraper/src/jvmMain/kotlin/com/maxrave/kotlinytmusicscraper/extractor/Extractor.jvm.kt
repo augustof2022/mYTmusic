@@ -116,12 +116,12 @@ actual class Extractor {
             val manifest = streamInfo.dashMpdUrl.takeIf { !it.isNullOrEmpty() } ?: streamInfo.hlsUrl
             if (!manifest.isNullOrEmpty()) temp.add(96 to manifest)
             val pipeResult = temp.toList()
-            if (!pipeResult.hasRequiredItags()) {
-                Logger.d(TAG, "PipePipe[$tier] missing required itags for $videoId (got=${pipeResult.map { it.first }})")
+            if (!pipeResult.hasAudioStreams()) {
+                Logger.d(TAG, "PipePipe[$tier] missing audio streams for $videoId (got=${pipeResult.map { it.first }})")
                 return null
             }
-            if (!pipeResult.headCheckRandomStream()) {
-                Logger.d(TAG, "PipePipe[$tier] stream URL HEAD check failed (non 2xx) for $videoId")
+            if (!pipeResult.headCheckAudioStream()) {
+                Logger.d(TAG, "PipePipe[$tier] audio URL HEAD checks failed (non 2xx) for $videoId")
                 // A rejected URL is the one symptom of a stale player table: the signature is
                 // well-formed and still wrong, so nothing threw on the way here. Only the on-device
                 // table can go stale, so only that tier is worth invalidating.

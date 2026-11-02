@@ -5,8 +5,8 @@ import com.maxrave.common.ITAG
 import com.maxrave.kotlinytmusicscraper.YouTube.Companion.DEFAULT_VISITOR_DATA
 import com.maxrave.kotlinytmusicscraper.extension.toListFormat
 import com.maxrave.kotlinytmusicscraper.extractor.ExtractSource
-import com.maxrave.kotlinytmusicscraper.extractor.contentLengthOf
-import com.maxrave.kotlinytmusicscraper.extractor.orderByAudioTrack
+import com.maxrave.kotlinytmusicscraper.extractor.extractedFormats
+import com.maxrave.kotlinytmusicscraper.extractor.withPlayableAudio
 import com.maxrave.kotlinytmusicscraper.models.AccountInfo
 import com.maxrave.kotlinytmusicscraper.models.AlbumItem
 import com.maxrave.kotlinytmusicscraper.models.Artist
@@ -1379,106 +1379,21 @@ class YouTube {
         tempRes: PlayerResponse,
         preferredAudioLanguage: String? = null,
     ): PlayerResponse? {
-        val listUrlSig = mutableListOf<String>()
-        var decodedSigResponse: PlayerResponse?
-        var sigResponse: PlayerResponse?
-        Logger.d(TAG, "YouTube TempRes ${tempRes.playabilityStatus}")
-        if (tempRes.playabilityStatus.status != "OK") {
-            return null
-        } else {
-            sigResponse = tempRes
-        }
-        val streamsList = ytMusic.getNewPipePlayer(videoId).orderByAudioTrack(preferredAudioLanguage)
-        if (streamsList.isEmpty()) return null
-
-        decodedSigResponse =
-            sigResponse.copy(
-                streamingData =
-                    sigResponse.streamingData?.copy(
-                        formats =
-                            sigResponse.streamingData.formats?.map { format ->
-                                val url = streamsList.find { it.first == format.itag }?.second
-                                format.copy(
-                                    url = url,
-                                    contentLength = url?.let(::contentLengthOf) ?: format.contentLength,
-                                )
-                            },
-                        adaptiveFormats =
-                            sigResponse.streamingData.adaptiveFormats.map { adaptiveFormats ->
-                                val url = streamsList.find { it.first == adaptiveFormats.itag }?.second
-                                adaptiveFormats.copy(
-                                    url = url,
-                                    contentLength = url?.let(::contentLengthOf) ?: adaptiveFormats.contentLength,
-                                )
-                            },
-                        hlsManifestUrl = streamsList.firstOrNull { it.first == 96 }?.second,
-                    ),
-            )
-        decodedSigResponse =
-            decodedSigResponse.copy(
-                streamingData =
-                    decodedSigResponse.streamingData?.copy(
-                        formats =
-                            decodedSigResponse.streamingData.formats?.let { formats ->
-                                val copy = formats.toMutableList()
-                                streamsList
-                                    .filter {
-                                        isManifestUrl(it.second)
-                                    }.forEach { manifest ->
-                                        copy.add(
-                                            PlayerResponse.StreamingData.Format(
-                                                itag = manifest.first,
-                                                url = manifest.second,
-                                                mimeType = "",
-                                                bitrate = 0,
-                                                width = if (manifest.first == 96) 1920 else 1080,
-                                                height = if (manifest.first == 96) 1080 else 720,
-                                                contentLength = 0,
-                                                quality = "",
-                                                fps = 0,
-                                                qualityLabel = "",
-                                                averageBitrate = 0,
-                                                audioQuality = "",
-                                                approxDurationMs = "",
-                                                audioSampleRate = 0,
-                                                audioChannels = 0,
-                                                loudnessDb = 0.0,
-                                                lastModified = 0,
-                                                signatureCipher = "",
-                                            ),
-                                        )
-                                    }
-                                copy.filter { it.itag != 0 }
-                                copy
-                            },
-                    ),
-            )
-        listUrlSig.addAll(
-            (
-                decodedSigResponse
-                    .streamingData
-                    ?.adaptiveFormats
-                    ?.mapNotNull { it.url }
-                    ?.toMutableList() ?: mutableListOf()
-            ).apply {
-                decodedSigResponse
-                    .streamingData
-                    ?.formats
-                    ?.mapNotNull { it.url }
-                    ?.let { addAll(it) }
-            },
-        )
-        listUrlSig.forEach {
-            Logger.d(TAG, "YouTube NewPipe URL $it")
-        }
-        val randomUrl = listUrlSig.randomOrNull() ?: return null
-        if (listUrlSig.isNotEmpty() && !is403Url(randomUrl)) {
-            Logger.d(TAG, "YouTube NewPipe Found URL $randomUrl")
-            return decodedSigResponse
-        } else {
-            Logger.d(TAG, "YouTube NewPipe No URL Found")
+        if (tempRes.playabilityStatus.status != "OK") return null
+        val streams = ytMusic.getNewPipePlayer(videoId)
+        if (streams.isEmpty()) {
+            Logger.w(TAG, "Extractor returned no streams for $videoId")
             return null
         }
+        val streamingData =
+            extractedFormats(tempRes.streamingData, streams, preferredAudioLanguage)
+                .withPlayableAudio(ITAG.MUXED_360P) { url -> !is403Url(url) }
+                ?: run {
+                    Logger.w(TAG, "No working audio format for $videoId after merging extractor and player metadata")
+                    return null
+                }
+        Logger.d(TAG, "Resolved audio for $videoId from ${streamingData.adaptiveFormats.size} adaptive formats")
+        return tempRes.copy(streamingData = streamingData)
     }
 
     fun isManifestUrl(url: String): Boolean = url.contains(".m3u8") || url.contains(".mpd") || url.contains("manifest")

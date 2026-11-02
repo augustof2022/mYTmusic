@@ -82,6 +82,8 @@ jobs:
           cp=os.pathsep.join(str(p) for p in [stdlib,work/'junit.jar',work/'hamcrest.jar',work/'kotlin-test.jar',work/'kotlin-test-junit.jar',classes])
           r=subprocess.run(['java','-Xmx128m','-cp',cp,'org.junit.runner.JUnitCore','com.maxrave.media3.exoplayer.SeamlessTimingTest','com.maxrave.simpmusic.utils.QuickAddDestinationTest','com.maxrave.media3.exoplayer.AutomaticTransitionPolicyTest','com.renz.segue.YouTubePlaylistPolicyTest','com.renz.segue.SegueReleasePolicyTest','com.maxrave.simpmusic.utils.SegueVersionTest','com.maxrave.simpmusic.utils.PlaybackErrorMessageTest'],check=True,capture_output=True,text=True)
           print(r.stdout);Path('timing-test-result.txt').write_text(r.stdout)
+      - name: Verify extracted audio formats and quality fallback
+        run: python3 scripts/check-stream-formats.py
       - name: Build the unsigned release APK
         run: ./gradlew -I personal-build.gradle :androidApp:assembleRelease :androidApp:assembleDebug -PisFullBuild=false --no-daemon --no-configuration-cache --max-workers=1 -Dorg.gradle.jvmargs=-Xmx5g -Pkotlin.daemon.jvmargs=-Xmx1536m
       - name: Collect unsigned APK for private signing

@@ -18,6 +18,7 @@ import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.repository.StreamRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.kotlinytmusicscraper.YouTube
+import com.maxrave.kotlinytmusicscraper.extractor.selectAudioFormat
 import com.maxrave.kotlinytmusicscraper.models.MediaType
 import com.maxrave.kotlinytmusicscraper.models.response.PlayerResponse
 import com.maxrave.logger.Logger
@@ -168,27 +169,24 @@ internal class StreamRepositoryImpl(
                             ?: formatList.find { it.itag == ITAG.VIDEO_360P }
                             ?: formatList.find { !it.isAudio && it.url.isNullOrEmpty().not() }
                     val audioTwinItag = ITAG.highQualityTwinOf(itag)
-                    val audioFormat =
-                        formatList.find { it.itag == itag } ?: if (audioTwinItag != null) {
-                            formatList.find { it.itag == audioTwinItag }
-                        } else {
-                            formatList.find { it.isAudio && it.url.isNullOrEmpty().not() }
-                        }
+                    val audioFormat = formatList.selectAudioFormat(itag, audioTwinItag, ITAG.MUXED_360P)
                     var format =
                         if (isVideo) {
                             videoFormat
                         } else {
                             audioFormat
                         }
-                    if (format == null) {
-                        format = formatList.lastOrNull { it.url.isNullOrEmpty().not() }
-                    }
                     if (muxed) {
                         format = formatList
                             .filter {
                                 val url = it.url
                                 url != null && youTube.isManifestUrl(url)
                             }.maxByOrNull { it.width ?: 0 } ?: formatList.find { it.itag == videoItag }
+                    }
+                    if (format == null) {
+                        Logger.e("Stream", "No ${if (isVideo) "video" else "audio"} format available for $videoId")
+                        emit(null)
+                        return@onSuccess
                     }
                     // One line per resolved stream and never the URL: a googlevideo URL carries the
                     // listener's IP address.

@@ -1370,7 +1370,9 @@ class Ytmusic {
 
     suspend fun is403Url(url: String): Boolean {
         return try {
-            return httpClient.head(url).status.value in 400..499
+            return httpClient.head(url).status.value !in 200..299
+        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             e.printStackTrace()
             true

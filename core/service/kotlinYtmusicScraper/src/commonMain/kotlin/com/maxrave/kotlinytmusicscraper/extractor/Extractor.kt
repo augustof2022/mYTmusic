@@ -22,7 +22,7 @@ expect class Extractor() {
      * produced one.
      *
      * Kept apart from [newPipePlayer] on purpose: that path is built for videos of a fixed length,
-     * and every tier there rejects a result without the regular audio and video itags — which a
+     * and every tier there requires fixed-length audio formats — which a
      * live stream never carries, so a perfectly good live extraction looked like a failed one.
      */
     fun liveHlsUrl(videoId: String): String?
