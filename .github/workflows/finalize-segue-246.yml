@@ -1,0 +1,51 @@
+name: Finalize verified Segue v2.4.6
+on:
+  push:
+    branches: [automation/finalize-v2.4.6]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  finalize:
+    if: github.repository == 'augustof2022/mYTmusic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Select the tested main build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/segue_release.py resolve
+      - uses: actions/download-artifact@v4
+        with:
+          name: mYTmusic-unsigned-apk
+          run-id: ${{ steps.build.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: apk-artifacts
+      - name: Sign and finalize the newer tested release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEGUE_SOURCE_SHA: ${{ steps.build.outputs.source_sha }}
+          SEGUE_KEYSTORE_BASE64: ${{ secrets.SEGUE_KEYSTORE_BASE64 }}
+          SEGUE_KEYSTORE_PASSWORD: ${{ secrets.SEGUE_KEYSTORE_PASSWORD }}
+          SEGUE_KEY_ALIAS: ${{ secrets.SEGUE_KEY_ALIAS }}
+          SEGUE_KEY_PASSWORD: ${{ secrets.SEGUE_KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os,sys
+          names=['SEGUE_KEYSTORE_BASE64','SEGUE_KEYSTORE_PASSWORD','SEGUE_KEY_ALIAS','SEGUE_KEY_PASSWORD']
+          missing=[name for name in names if not os.environ.get(name)]
+          if missing:
+              print('Missing repository secret names: '+', '.join(missing))
+              sys.exit(1)
+          print('All four required secret names have values; checking the signing identity next.')
+          PY
+          python3 scripts/segue_release.py release
