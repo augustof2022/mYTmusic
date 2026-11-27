@@ -204,6 +204,12 @@ interface LocalPlaylistRepository {
 
     fun getYouTubeSetVideoId(youtubePlaylistId: String): Flow<List<SetVideoIdEntity>>
 
+    /** The entry id stored for [videoId] in [youtubePlaylistId] (e.g. right after an add). No network. */
+    suspend fun getStoredSetVideoId(
+        videoId: String,
+        youtubePlaylistId: String,
+    ): String?
+
     fun addYouTubePlaylistItem(
         youtubePlaylistId: String,
         videoId: String,

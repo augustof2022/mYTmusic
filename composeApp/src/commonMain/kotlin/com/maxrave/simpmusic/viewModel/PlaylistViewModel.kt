@@ -50,6 +50,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.component.inject
+import com.maxrave.domain.suggestion.SuggestionFilter
+import com.maxrave.domain.suggestion.SuggestionTagRepository
+import com.maxrave.domain.utils.LocalResource
+import org.koin.core.component.get
+import simpmusic.composeapp.generated.resources.added_to_youtube_playlist
+import simpmusic.composeapp.generated.resources.can_t_add_to_youtube_playlist
+import simpmusic.composeapp.generated.resources.suggest
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.auto_created_by_youtube_music
 import simpmusic.composeapp.generated.resources.downloading
@@ -242,6 +249,7 @@ class PlaylistViewModel(
     }
 
     private fun resetData() {
+        suggestionEngine.stop()
         _uiState.value = Loading
         _playlistEntity.value = null
         _downloadedList.value = emptyList()
@@ -653,6 +661,110 @@ class PlaylistViewModel(
             PlaylistUIEvent.Favorite -> {
                 updatePlaylistLiked(!liked.value, data.id)
             }
+        }
+    }
+
+    // ===== Smart suggestions (the listener's own YouTube playlists) =====
+    // Same engine as local playlists (SmartSuggestionEngine). + adds the song to the YouTube
+    // playlist itself, so it syncs to every device (Renz said yes, 2026-11-27).
+
+    private val suggestionEngine by lazy {
+        SmartSuggestionEngine(viewModelScope, songRepository, get<SuggestionTagRepository>())
+    }
+    val suggestions: StateFlow<SmartSuggestionEngine.State> get() = suggestionEngine.state
+
+    /** Songs being added right now: a second tap must not send a second add. */
+    private val addingIds = mutableSetOf<String>()
+
+    fun startSuggestions() {
+        val data = uiState.value.data ?: return
+        if (data.isRadio || tracks.value.isEmpty()) return
+        suggestionEngine.start(
+            // The loaded songs (YouTube sends 100 per page): seeds for radios and the chip source.
+            loadSeeds = {
+                tracks.value.map { t -> SuggestionSeed(t.videoId, t.title, t.artists?.map { it.name }.orEmpty()) }
+            },
+            // The cached full id list covers pages not loaded yet, so they are never suggested.
+            excludeIds = _playlistEntity.value?.tracks.orEmpty(),
+        )
+    }
+
+    fun reloadSuggestions() = suggestionEngine.reload()
+
+    /** null = Auto. */
+    fun toggleSuggestionFilter(filter: SuggestionFilter?) = suggestionEngine.toggle(filter)
+
+    /** Adds the song to this YouTube playlist; a new suggestion takes its place. */
+    fun addSuggestionToPlaylist(track: Track) {
+        val data = uiState.value.data ?: return
+        val videoId = track.videoId
+        if (videoId in addingIds) return
+        val alreadyIn =
+            tracks.value.any { it.videoId == videoId } || _playlistEntity.value?.tracks.orEmpty().contains(videoId)
+        suggestionEngine.onAdded(videoId)
+        if (alreadyIn) return
+        addingIds += videoId
+        viewModelScope.launch {
+            try {
+                var added = false
+                localPlaylistRepository.addYouTubePlaylistItem(data.id, videoId).collect { result ->
+                    if (result is LocalResource.Success) added = true
+                }
+                if (!added) {
+                    suggestionEngine.onAddFailed(videoId)
+                    makeToast(getString(Res.string.can_t_add_to_youtube_playlist))
+                    return@launch
+                }
+                // YouTube's entry id for the new row, stored by the add itself: lets it be removed
+                // again without a refresh.
+                val entryId = localPlaylistRepository.getStoredSetVideoId(videoId, data.id)
+                // YouTube adds at the end. Show the row now only when every page is loaded;
+                // otherwise paging brings it in at its real place, and adding it here too would
+                // list it twice.
+                if (tracksListState.value == ListState.PAGINATION_EXHAUST) {
+                    _tracks.update { it + track.copy(playlistSetVideoId = entryId) }
+                }
+                _uiState.update { state ->
+                    val d = state.data
+                    if (state is Success && d != null) Success(d.copy(trackCount = d.trackCount + 1)) else state
+                }
+                _playlistEntity.value?.let { cached ->
+                    val updated =
+                        cached.copy(
+                            tracks = cached.tracks.orEmpty() + track.videoId,
+                            trackCount = cached.trackCount + 1,
+                        )
+                    _playlistEntity.value = updated
+                    playlistRepository.insertAndReplacePlaylist(updated)
+                }
+                makeToast(getString(Res.string.added_to_youtube_playlist))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                suggestionEngine.onAddFailed(videoId)
+                makeToast(error.message ?: getString(Res.string.can_t_add_to_youtube_playlist))
+            } finally {
+                addingIds -= videoId
+            }
+        }
+    }
+
+    /** Plays a suggestion as a radio, as the local playlist screen does. */
+    fun playSuggestion(track: Track) {
+        val data = uiState.value.data ?: return
+        val list = suggestionEngine.state.value.songs
+        viewModelScope.launch {
+            setQueueData(
+                QueueData.Data(
+                    listTracks = list.toCollection(arrayListOf()),
+                    firstPlayedTrack = track,
+                    playlistId = "RDAMVM${track.videoId}",
+                    playlistName = "${getString(Res.string.playlist)} \"${data.title}\" ${getString(Res.string.suggest)}",
+                    playlistType = PlaylistType.RADIO,
+                    continuation = null,
+                ),
+            )
+            loadMediaItem(track, Config.PLAYLIST_CLICK, list.indexOf(track).coerceAtLeast(0))
         }
     }
 

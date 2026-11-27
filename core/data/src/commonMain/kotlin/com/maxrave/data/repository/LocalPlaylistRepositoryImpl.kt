@@ -677,6 +677,11 @@ internal class LocalPlaylistRepositoryImpl(
      * names this playlist; it is the row every lookup returned first before, so old data with nothing
      * better resolves exactly as it used to.
      */
+    override suspend fun getStoredSetVideoId(
+        videoId: String,
+        youtubePlaylistId: String,
+    ): String? = findSetVideoId(videoId, youtubePlaylistId)?.setVideoId
+
     private suspend fun findSetVideoId(
         videoId: String,
         youtubePlaylistId: String,

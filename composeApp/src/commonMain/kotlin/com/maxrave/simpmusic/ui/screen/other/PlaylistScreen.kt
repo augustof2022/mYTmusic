@@ -114,6 +114,7 @@ import com.maxrave.simpmusic.ui.component.NowPlayingBottomSheet
 import com.maxrave.simpmusic.ui.component.PlaylistBottomSheet
 import com.maxrave.simpmusic.ui.component.RippleIconButton
 import com.maxrave.simpmusic.ui.component.SongFullWidthItems
+import com.maxrave.simpmusic.ui.component.SmartSuggestionPanel
 import com.maxrave.simpmusic.ui.component.liquidGlass
 import com.maxrave.simpmusic.ui.component.selection.SelectedSongsBottomSheet
 import com.maxrave.simpmusic.ui.component.selection.SongSelectionTopAppBar
@@ -211,6 +212,13 @@ fun PlaylistScreen(
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
     val liked by viewModel.liked.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
+    val suggestionState by viewModel.suggestions.collectAsStateWithLifecycle()
+    var suggestionsOpen by rememberSaveable { mutableStateOf(false) }
+    // Starts when the panel is open and the songs are there: also after the app was restored with
+    // the panel open, and when the songs arrive after the panel was opened.
+    LaunchedEffect(suggestionsOpen, tracks.isEmpty()) {
+        if (suggestionsOpen && tracks.isNotEmpty() && !suggestionState.active) viewModel.startSuggestions()
+    }
     val tracksListState by viewModel.tracksListState.collectAsStateWithLifecycle()
 
     var showSearchBar by rememberSaveable { mutableStateOf(false) }
@@ -1061,6 +1069,23 @@ fun PlaylistScreen(
                                                     style = typo().bodyMedium,
                                                     modifier = Modifier.padding(vertical = 8.dp),
                                                 )
+                                                // Suggestions for the listener's own YouTube playlists; + adds to YouTube.
+                                                if ((isYourYouTubePlaylist || data.isEditable) && !data.isRadio) {
+                                                    SmartSuggestionPanel(
+                                                        open = suggestionsOpen,
+                                                        onOpenChange = { suggestionsOpen = it },
+                                                        songs = suggestionState.songs,
+                                                        loading = suggestionState.loading,
+                                                        filters = suggestionState.filters,
+                                                        selected = suggestionState.selected,
+                                                        filtersLoading = suggestionState.filtersLoading,
+                                                        playingVideoId = playingTrack?.videoId,
+                                                        onReload = { viewModel.reloadSuggestions() },
+                                                        onToggle = { viewModel.toggleSuggestionFilter(it) },
+                                                        onAdd = { viewModel.addSuggestionToPlaylist(it) },
+                                                        onPlay = { viewModel.playSuggestion(it) },
+                                                    )
+                                                }
                                             }
                                         }
                                     }

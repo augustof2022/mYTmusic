@@ -34,6 +34,9 @@ data class TaggedSong(
 object SmartSuggestion {
     const val MAX_CHIPS_PER_KIND = 6
 
+    /** How many suggestions are on screen at once. */
+    const val SHOW_COUNT = 5
+
     /** Share of the playlist that must carry a BPM before a speed chip is offered. */
     const val SPEED_COVERAGE = 0.5
 
