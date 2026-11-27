@@ -59,6 +59,7 @@ import com.maxrave.domain.mediaservice.handler.RepeatState
 import com.maxrave.domain.mediaservice.handler.SimpleMediaState
 import com.maxrave.domain.mediaservice.handler.SleepTimerState
 import com.maxrave.domain.mediaservice.handler.ToastType
+import com.maxrave.domain.mediaservice.player.ErrorSkipPolicy
 import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
 import com.maxrave.domain.mediaservice.player.MediaPlayerListener
 import com.maxrave.domain.repository.AnalyticsRepository
@@ -413,6 +414,9 @@ class JvmMediaPlayerHandlerImpl(
         }
 
     //
+    // Declared before init: the listener registered there may be called back at once.
+    private val errorSkipPolicy = ErrorSkipPolicy()
+
     init {
         player.addListener(this)
         progressJob = Job()
@@ -1092,6 +1096,7 @@ class JvmMediaPlayerHandlerImpl(
                         // half the track or four minutes, so five seconds of granularity is plenty
                         // and the 100ms loop stays as cheap as it was.
                         lastfmScrobbler.onProgress(player.currentPosition)
+                        errorSkipPolicy.onPlaybackProgress(player.currentPosition)
                     }
                 }
             }
@@ -2949,7 +2954,7 @@ class JvmMediaPlayerHandlerImpl(
 //                } else {
 //                    Logger.w("Player Error", "App is not in foreground, skipping toast")
 //                }
-                player.pause()
+                skipOrStopAfterError(error)
             }
 
             else -> {
@@ -2960,8 +2965,32 @@ class JvmMediaPlayerHandlerImpl(
 //                } else {
 //                    Logger.w("Player Error", "App is not in foreground, skipping toast")
 //                }
-                player.pause()
+                skipOrStopAfterError(error)
             }
+        }
+    }
+
+    /** One dead track must not stop the playlist: move on, unless every track keeps failing. */
+    private fun skipOrStopAfterError(error: PlayerError) {
+        // The picked track failed but the healthy one is still playing: the toast is enough.
+        if (error.errorCodeName == ErrorSkipPolicy.TRANSITION_UNAVAILABLE) return
+        val failedMediaId = player.currentMediaItem?.mediaId
+        when (errorSkipPolicy.onError(failedMediaId, hasNext = player.hasNextMediaItem())) {
+            ErrorSkipPolicy.Decision.SKIP_TO_NEXT -> {
+                Logger.w("Player Error", "Skipping to next track (failure ${errorSkipPolicy.consecutiveFailures} in a row)")
+                // Posted, not run here: the player adapter is still inside its own error handling.
+                coroutineScope.launch(Dispatchers.Main) {
+                    // The listener may have picked another track meanwhile: leave that one alone.
+                    if (player.currentMediaItem?.mediaId != failedMediaId) return@launch
+                    // seekToNext alone, as the explicit-content skip does: the adapters load the next
+                    // index themselves. prepare() would reload the failed index and race this skip.
+                    player.seekToNext()
+                }
+            }
+
+            ErrorSkipPolicy.Decision.STOP -> player.pause()
+
+            ErrorSkipPolicy.Decision.ALREADY_HANDLED -> Unit
         }
     }
 
