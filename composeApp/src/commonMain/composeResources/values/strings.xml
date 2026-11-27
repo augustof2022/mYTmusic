@@ -299,6 +299,13 @@
     <string name="free_space">Free space</string>
     <string name="suggest">Suggestion</string>
     <string name="reload">Reload</string>
+    <string name="suggest_auto">Auto</string>
+    <string name="suggest_none_auto">No suggestions right now. Tap Reload.</string>
+    <string name="suggest_no_match">No songs match these filters yet. Try fewer filters or Reload.</string>
+    <string name="suggest_reading_playlist">Reading your playlist for filters…</string>
+    <string name="suggest_speed_slow">Slow</string>
+    <string name="suggest_speed_medium">Medium tempo</string>
+    <string name="suggest_speed_fast">Fast</string>
     <string name="sort_by">Sort by</string>
     <string name="sort">Sort</string>
     <string name="older_first">Older First</string>

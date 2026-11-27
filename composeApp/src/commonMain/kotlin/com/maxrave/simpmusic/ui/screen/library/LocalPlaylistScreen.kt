@@ -17,6 +17,23 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import com.maxrave.simpmusic.ui.icon.Person
+import simpmusic.composeapp.generated.resources.suggest_none_auto
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.maxrave.domain.suggestion.FilterKind
+import com.maxrave.domain.suggestion.Speed
+import com.maxrave.domain.suggestion.SuggestionFilter
+import simpmusic.composeapp.generated.resources.suggest_auto
+import simpmusic.composeapp.generated.resources.suggest_no_match
+import simpmusic.composeapp.generated.resources.suggest_reading_playlist
+import simpmusic.composeapp.generated.resources.suggest_speed_slow
+import simpmusic.composeapp.generated.resources.suggest_speed_medium
+import simpmusic.composeapp.generated.resources.suggest_speed_fast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -343,7 +360,9 @@ fun LocalPlaylistScreen(
     }
 
     LaunchedEffect(key1 = shouldShowSuggestions) {
-        if (suggestedTracks.isEmpty() && uiState.syncState != LocalPlaylistEntity.YouTubeSyncState.NotSynced) {
+        // Any playlist with songs: suggestions now come from radios of its own songs, so a YouTube
+        // sync is no longer needed (when synced, YouTube's own suggestions are used as well).
+        if (shouldShowSuggestions && suggestedTracks.isEmpty() && uiState.trackCount > 0) {
             viewModel.getSuggestions(uiState.id)
         }
     }
@@ -359,9 +378,7 @@ fun LocalPlaylistScreen(
         }
     }
     LaunchedEffect(key1 = uiState) {
-        shouldShowSuggestButton =
-            !uiState.ytPlaylistId.isNullOrEmpty() &&
-            uiState.syncState == LocalPlaylistEntity.YouTubeSyncState.Synced
+        shouldShowSuggestButton = uiState.trackCount > 0
     }
     LaunchedEffect(key1 = firstItemVisible) {
         shouldHideTopBar = !firstItemVisible
@@ -1232,6 +1249,12 @@ fun LocalPlaylistScreen(
                                                 )
                                             }
                                         }
+                                        SuggestionFilterRow(
+                                            filters = uiState.smartFilters,
+                                            selected = uiState.selectedFilters,
+                                            reading = uiState.filtersLoading,
+                                            onToggle = { viewModel.toggleSuggestionFilter(it) },
+                                        )
                                         Spacer(modifier = Modifier.size(8.dp))
                                         Crossfade(targetState = suggestionsLoading) {
                                             if (it) {
@@ -1244,6 +1267,21 @@ fun LocalPlaylistScreen(
                                                 )
                                             } else {
                                                 Column {
+                                                    if (suggestedTracks.isEmpty()) {
+                                                        Text(
+                                                            text =
+                                                                stringResource(
+                                                                    if (uiState.selectedFilters.isEmpty()) {
+                                                                        Res.string.suggest_none_auto
+                                                                    } else {
+                                                                        Res.string.suggest_no_match
+                                                                    },
+                                                                ),
+                                                            color = Color(0xC4FFFFFF),
+                                                            style = typo().bodySmall,
+                                                            modifier = Modifier.padding(vertical = 12.dp),
+                                                        )
+                                                    }
                                                     suggestedTracks.forEachIndexed { index, track ->
                                                         SuggestItems(
                                                             forceDark = true,
@@ -1743,3 +1781,106 @@ fun LocalPlaylistScreen(
         )
     }
 }
+
+/**
+ * The chips above the suggestions: Auto first, then what this playlist is made of (genres, decades,
+ * artists, speed). Tap several; same kind widens, different kinds narrow (see SmartSuggestion).
+ * Styled like the playlist's Sort pill: white at 12% when off, solid white with dark text when on.
+ */
+@Composable
+private fun SuggestionFilterRow(
+    filters: List<SuggestionFilter>,
+    selected: Set<SuggestionFilter>,
+    reading: Boolean,
+    onToggle: (SuggestionFilter?) -> Unit,
+) {
+    Column {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SuggestionChipPill(
+                label = stringResource(Res.string.suggest_auto),
+                on = selected.isEmpty(),
+                onClick = { onToggle(null) },
+            )
+            filters.forEach { filter ->
+                SuggestionChipPill(
+                    label = filter.label(),
+                    on = filter in selected,
+                    onClick = { onToggle(filter) },
+                    isArtist = filter.kind == FilterKind.ARTIST,
+                )
+            }
+        }
+        if (reading) {
+            Text(
+                text = stringResource(Res.string.suggest_reading_playlist),
+                color = Color(0xC4FFFFFF),
+                style = typo().bodySmall,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionChipPill(
+    label: String,
+    on: Boolean,
+    onClick: () -> Unit,
+    isArtist: Boolean = false,
+) {
+    // The pill looks 32dp tall; the Box gives it a 48dp touch target without changing the look.
+    Box(
+        modifier = Modifier.minimumInteractiveComponentSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .widthIn(max = 180.dp)
+                    .clip(CircleShape)
+                    .background(if (on) Color.White else Color.White.copy(alpha = 0.12f))
+                    .toggleable(value = on, role = Role.Checkbox, onValueChange = { onClick() })
+                    .padding(vertical = 8.dp, horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Only artists get an icon: "Jazz" could be a genre or an artist, "2020s" and "Fast" cannot.
+            if (isArtist) {
+                Icon(
+                    imageVector = SimpIcons.Person,
+                    contentDescription = null,
+                    tint = if (on) Color.Black.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Text(
+                text = label,
+                style = typo().bodySmall,
+                color = if (on) Color.Black else Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionFilter.label(): String =
+    when (kind) {
+        FilterKind.DECADE -> "${value}s"
+        FilterKind.SPEED ->
+            when (value) {
+                Speed.SLOW.name -> stringResource(Res.string.suggest_speed_slow)
+                Speed.MEDIUM.name -> stringResource(Res.string.suggest_speed_medium)
+                else -> stringResource(Res.string.suggest_speed_fast)
+            }
+        else -> value
+    }
+

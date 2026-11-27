@@ -24,6 +24,14 @@ import com.maxrave.domain.data.entities.PairSongLocalPlaylist
 import com.maxrave.domain.data.entities.SetVideoIdEntity
 import com.maxrave.domain.data.entities.SongEntity
 import com.maxrave.domain.data.model.browse.album.Track
+import com.maxrave.domain.suggestion.FilterKind
+import com.maxrave.domain.suggestion.SmartSuggestion
+import com.maxrave.domain.suggestion.SuggestionFilter
+import com.maxrave.domain.suggestion.SuggestionTagRepository
+import com.maxrave.domain.suggestion.TaggedSong
+import com.maxrave.domain.suggestion.TrackTags
+import com.maxrave.domain.utils.LocalResource
+import com.maxrave.domain.utils.Resource
 import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.mediaservice.handler.DownloadHandler
 import com.maxrave.domain.mediaservice.handler.PlaylistType
@@ -61,6 +69,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.singleOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import kotlinx.datetime.LocalDateTime
 import org.koin.core.component.inject
 import simpmusic.composeapp.generated.resources.Res
@@ -84,6 +96,12 @@ import simpmusic.composeapp.generated.resources.unsyncing
 import simpmusic.composeapp.generated.resources.updated
 import simpmusic.composeapp.generated.resources.updated_to_youtube_playlist
 import simpmusic.composeapp.generated.resources.updating
+
+private const val SUGGESTION_COUNT = 5
+private const val MAX_REFILL_ROUNDS = 3
+private const val PLAYLIST_TAG_SAMPLE = 20
+private const val POOL_TAG_BATCH = 30
+private const val TAG_PARALLELISM = 4
 
 class LocalPlaylistViewModel(
     private val dataStoreManager: DataStoreManager,
@@ -305,82 +323,251 @@ class LocalPlaylistViewModel(
         modifications.value += actions
     }
 
+    // ===== Smart suggestions =====
+    // Five songs at a time, picked from YouTube "related" radios of songs already in the playlist
+    // (plus YouTube's own suggestions when the playlist is synced). Chips are read from the
+    // playlist's Deezer tags; no chip picked = Auto, which ranks by closeness to the playlist.
+
+    private val tagRepository: SuggestionTagRepository by inject<SuggestionTagRepository>()
+    /** The first load (playlist songs, first candidates). Later work waits for it, never cancels it. */
+    private var setupJob: Job? = null
+    private var suggestionJob: Job? = null
+    private var tagJob: Job? = null
+    private val pool = mutableListOf<Track>()
+    private val poolTags = mutableMapOf<String, TrackTags?>()
+    private val excludedIds = mutableSetOf<String>()
+    private val usedSeeds = mutableSetOf<String>()
+    private var playlistTagged: List<TaggedSong> = emptyList()
+    private var playlistSongs: List<SongEntity> = emptyList()
+    private var ytReloadParams: String? = null
+    private var useBpm = false
+
+    /** True once the listener changed the list (add, refresh, chip): Auto then stops re-ranking it. */
+    private var suggestionsTouched = false
+
     fun getSuggestions(playlistId: Long) {
-        loading.value = true
-        viewModelScope.launch {
-            localPlaylistRepository.getSuggestionsTrackForPlaylist(playlistId).collectLatestResource(
-                onSuccess = { res ->
-                    val reloadParams = res?.first
-                    val songs = res?.second
-                    if (reloadParams != null && songs != null) {
-                        _uiState.update {
-                            it.copy(
-                                suggestions =
-                                    LocalPlaylistState.SuggestionSongs(
-                                        reloadParams = reloadParams,
-                                        songs = songs,
-                                    ),
-                            )
-                        }
-                    } else {
-                        _uiState.update {
-                            it.copy(
-                                suggestions = null,
-                            )
-                        }
-                    }
-                    loading.value = false
-                },
-                onError = { e ->
-                    makeToast(e)
-                    loading.value = false
-                    _uiState.update {
-                        it.copy(
-                            suggestions = null,
-                        )
-                    }
-                },
+        setupJob?.cancel()
+        suggestionJob?.cancel()
+        tagJob?.cancel()
+        pool.clear()
+        poolTags.clear()
+        excludedIds.clear()
+        usedSeeds.clear()
+        playlistTagged = emptyList()
+        ytReloadParams = null
+        useBpm = false
+        suggestionsTouched = false
+        _uiState.update {
+            it.copy(
+                suggestions = null,
+                smartFilters = emptyList(),
+                selectedFilters = emptySet(),
+                filtersLoading = true,
             )
+        }
+        loading.value = true
+        setupJob =
+            viewModelScope.launch {
+                playlistSongs = localPlaylistRepository.getFullPlaylistTracks(id = playlistId)
+                excludedIds += playlistSongs.map { it.videoId }
+                if (playlistSongs.isEmpty()) {
+                    loading.value = false
+                    _uiState.update { it.copy(filtersLoading = false) }
+                    makeToast(getString(Res.string.playlist_is_empty))
+                    return@launch
+                }
+                // Chips are read in parallel with finding the first songs.
+                readTags()
+                // YouTube's own suggestions first, when this playlist is synced: shown at once.
+                val yt =
+                    localPlaylistRepository
+                        .getSuggestionsTrackForPlaylist(playlistId)
+                        .firstOrNull { it !is LocalResource.Loading }
+                (yt as? LocalResource.Success)?.data?.let { (params, songs) ->
+                    ytReloadParams = params
+                    addToPool(songs)
+                    showSuggestions()
+                    loading.value = false
+                }
+                addRelatedFromSeeds(seedsMatching(emptySet()), count = 2)
+                showSuggestions()
+                loading.value = false
+            }
+    }
+
+    /** Refresh: drop the five on screen and show the next five, finding more songs if needed. */
+    fun reloadSuggestion() {
+        suggestionsTouched = true
+        excludedIds += uiState.value.suggestions?.songs?.map { it.videoId }.orEmpty()
+        refill(target = SUGGESTION_COUNT)
+    }
+
+    /** null = Auto (clears every chip). Otherwise the chip is switched on or off. */
+    fun toggleSuggestionFilter(filter: SuggestionFilter?) {
+        suggestionsTouched = true
+        _uiState.update { state ->
+            val next =
+                when {
+                    filter == null -> emptySet()
+                    filter in state.selectedFilters -> state.selectedFilters - filter
+                    else -> state.selectedFilters + filter
+                }
+            state.copy(selectedFilters = next)
+        }
+        refill(target = SUGGESTION_COUNT)
+    }
+
+    fun removeListSuggestion() {
+        setupJob?.cancel()
+        suggestionJob?.cancel()
+        tagJob?.cancel()
+        loading.value = false
+        _uiState.update { it.copy(suggestions = null, smartFilters = emptyList(), selectedFilters = emptySet()) }
+    }
+
+    /** Shows what the pool holds now, then grows the pool if the picked chips leave gaps. */
+    private fun refill(target: Int) {
+        suggestionJob?.cancel()
+        suggestionJob =
+            viewModelScope.launch {
+                // Tapped during the first load: wait for it rather than cancel it.
+                setupJob?.join()
+                showSuggestions()
+                var rounds = 0
+                while ((uiState.value.suggestions?.songs?.size ?: 0) < target && rounds < MAX_REFILL_ROUNDS) {
+                    loading.value = uiState.value.suggestions?.songs.isNullOrEmpty()
+                    val needsTags = uiState.value.selectedFilters.any { it.kind != FilterKind.ARTIST }
+                    // Songs already found but not yet looked up may match: check them before fetching more.
+                    if (needsTags && pool.any { it.videoId !in poolTags }) {
+                        tagPool()
+                    } else {
+                        rounds++
+                        if (!growPool()) break
+                    }
+                    showSuggestions()
+                }
+                loading.value = false
+            }
+    }
+
+    /** One more batch of candidates: YouTube's next page, else radios of fitting playlist songs. */
+    private suspend fun growPool(): Boolean {
+        val before = pool.size
+        ytReloadParams?.let { params ->
+            val next =
+                localPlaylistRepository
+                    .reloadSuggestionPlaylist(params)
+                    .firstOrNull { it !is LocalResource.Loading }
+            (next as? LocalResource.Success)?.data?.let { (newParams, songs) ->
+                ytReloadParams = newParams
+                addToPool(songs)
+            } ?: run { ytReloadParams = null }
+        }
+        if (pool.size == before) addRelatedFromSeeds(seedsMatching(uiState.value.selectedFilters), count = 2)
+        return pool.size > before
+    }
+
+    /** Playlist songs that fit the picked chips (any song for Auto), not used as a seed yet. */
+    private fun seedsMatching(selected: Set<SuggestionFilter>): List<String> {
+        val fitting =
+            if (selected.isEmpty() || playlistTagged.isEmpty()) {
+                playlistSongs.map { it.videoId }
+            } else {
+                playlistTagged.filter { SmartSuggestion.matches(it, selected) }.map { it.id }
+                    .ifEmpty { playlistSongs.map { it.videoId } }
+            }
+        return fitting.filter { it !in usedSeeds }.shuffled()
+    }
+
+    private suspend fun addRelatedFromSeeds(
+        seeds: List<String>,
+        count: Int,
+    ) {
+        seeds.take(count).forEach { seed ->
+            usedSeeds += seed
+            val related = songRepository.getRelatedData(seed).firstOrNull()
+            (related as? Resource.Success)?.data?.first?.let { addToPool(it) }
         }
     }
 
-    fun reloadSuggestion() {
-        loading.value = true
-        viewModelScope.launch {
-            val param = uiState.value.suggestions?.reloadParams
-            if (param != null) {
-                localPlaylistRepository.reloadSuggestionPlaylist(param).collectLatestResource(
-                    onSuccess = { res ->
-                        val reloadParams = res?.first
-                        val songs = res?.second
-                        if (reloadParams != null && songs != null) {
-                            _uiState.update {
-                                it.copy(
-                                    suggestions =
-                                        LocalPlaylistState.SuggestionSongs(
-                                            reloadParams = reloadParams,
-                                            songs = songs,
-                                        ),
-                                )
-                            }
-                        } else {
-                            _uiState.update {
-                                it.copy(
-                                    suggestions = null,
-                                )
-                            }
-                        }
-                        loading.value = false
-                    },
-                    onError = {
-                        _uiState.update { it.copy(suggestions = null) }
-                        makeToast(getString(Res.string.error))
-                        loading.value = false
-                    },
-                )
+    private fun addToPool(tracks: List<Track>) {
+        val known = pool.map { it.videoId }.toSet()
+        pool += tracks.filter { it.videoId !in known && it.videoId !in excludedIds }
+    }
+
+    /** Chips first (from the playlist), then the candidates, so filters can match them. */
+    private fun readTags() {
+        tagJob?.cancel()
+        tagJob =
+            viewModelScope.launch {
+                val sample = playlistSongs.shuffled().take(PLAYLIST_TAG_SAMPLE)
+                playlistTagged =
+                    tagAll(sample.map { Triple(it.videoId, it.title, it.artistName.orEmpty()) }, withBpm = true)
+                useBpm = SmartSuggestion.buildFilters(playlistTagged).any { it.kind == FilterKind.SPEED }
+                _uiState.update { it.copy(smartFilters = SmartSuggestion.buildFilters(playlistTagged)) }
+                tagPool()
+                _uiState.update { it.copy(filtersLoading = false) }
+                // Auto, untouched: re-rank the first five now that the songs can be compared.
+                if (!suggestionsTouched || uiState.value.selectedFilters.isNotEmpty()) showSuggestions()
+            }
+    }
+
+    private suspend fun tagPool() {
+        val untagged = pool.filter { it.videoId !in poolTags }.take(POOL_TAG_BATCH)
+        val tagged =
+            tagAll(
+                untagged.map { t -> Triple(t.videoId, t.title, t.artists?.map { it.name }.orEmpty()) },
+                withBpm = useBpm,
+            )
+        tagged.forEach { poolTags[it.id] = it.tags }
+    }
+
+    private suspend fun tagAll(
+        songs: List<Triple<String, String, List<String>>>,
+        withBpm: Boolean,
+    ): List<TaggedSong> =
+        coroutineScope {
+            songs.chunked(TAG_PARALLELISM).flatMap { chunk ->
+                chunk.map { (id, title, artists) ->
+                    async {
+                        val tags = artists.firstOrNull()?.let { tagRepository.tagsFor(title, it, withBpm) }
+                        TaggedSong(id, artists, tags)
+                    }
+                }.awaitAll()
             }
         }
+
+    private fun taggedPool(): List<TaggedSong> =
+        pool.map { t -> TaggedSong(t.videoId, t.artists?.map { it.name }.orEmpty(), poolTags[t.videoId]) }
+
+    /** Fills the list up to five from the pool, keeping songs already on screen in place. */
+    private fun showSuggestions() {
+        val state = uiState.value
+        val onScreen =
+            if (suggestionsTouched) {
+                state.suggestions?.songs.orEmpty().filter { t ->
+                    t.videoId !in excludedIds &&
+                        (state.selectedFilters.isEmpty() || SmartSuggestion.matches(tagged(t), state.selectedFilters))
+                }
+            } else {
+                emptyList()
+            }
+        val more =
+            SmartSuggestion.pick(
+                pool = taggedPool(),
+                selected = state.selectedFilters,
+                profile = state.smartFilters,
+                exclude = excludedIds + onScreen.map { it.videoId },
+                count = SUGGESTION_COUNT - onScreen.size,
+            )
+        val byId = pool.associateBy { it.videoId }
+        val songs = onScreen + more.mapNotNull { byId[it.id] }
+        _uiState.update {
+            it.copy(suggestions = LocalPlaylistState.SuggestionSongs(reloadParams = ytReloadParams, songs = songs))
+        }
     }
+
+    private fun tagged(t: Track) = TaggedSong(t.videoId, t.artists?.map { it.name }.orEmpty(), poolTags[t.videoId])
 
     fun updatePlaylistDownloadState(
         id: Long,
@@ -726,10 +913,6 @@ class LocalPlaylistViewModel(
         }
     }
 
-    fun removeListSuggestion() {
-        _uiState.update { it.copy(suggestions = null) }
-    }
-
     fun addSuggestTrackToListTrack(track: Track) {
         viewModelScope.launch {
             _uiState.update { state ->
@@ -740,6 +923,10 @@ class LocalPlaylistViewModel(
                         ),
                 )
             }
+            // The added song leaves the pool for good, and a new one takes its place.
+            suggestionsTouched = true
+            excludedIds += track.videoId
+            refill(target = SUGGESTION_COUNT)
             _uiState.value.id.let { id ->
                 localPlaylistRepository
                     .addTrackToLocalPlaylist(
@@ -1102,6 +1289,11 @@ data class LocalPlaylistState(
     val loadState: PlaylistLoadState = PlaylistLoadState.Loading,
     val filterState: FilterState = FilterState.OlderFirst,
     val suggestions: SuggestionSongs? = null,
+    /** Chips read from this playlist; empty until its tags have been looked up. */
+    val smartFilters: List<SuggestionFilter> = emptyList(),
+    /** Chips switched on. Empty = Auto. */
+    val selectedFilters: Set<SuggestionFilter> = emptySet(),
+    val filtersLoading: Boolean = false,
 ) {
     sealed class SuggestionState {
         data object Loading : SuggestionState()
@@ -1122,7 +1314,7 @@ data class LocalPlaylistState(
     }
 
     data class SuggestionSongs(
-        val reloadParams: String,
+        val reloadParams: String?,
         val songs: List<Track>,
     )
 

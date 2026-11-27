@@ -39,6 +39,8 @@ import com.maxrave.domain.repository.SongRepository
 import com.maxrave.domain.repository.StreamRepository
 import com.maxrave.domain.repository.TasteRepository
 import com.maxrave.domain.repository.UpdateRepository
+import com.maxrave.domain.suggestion.SuggestionTagRepository
+import com.maxrave.data.suggestion.DeezerTagSource
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
@@ -87,6 +89,11 @@ val repositoryModule =
 
         single<LocalPlaylistRepository>(createdAtStart = true) {
             LocalPlaylistRepositoryImpl(get(), get())
+        }
+
+        // Lazy: only the playlist suggestions use it, and it holds its own HTTP client.
+        single<SuggestionTagRepository> {
+            DeezerTagSource()
         }
 
         single<LyricsCanvasRepository>(createdAtStart = true) {

@@ -78,6 +78,8 @@ kotlin {
                 implementation(projects.kotlinYtmusicScraper)
                 implementation(projects.kizzy)
                 implementation(projects.listenTogether)
+                // Ktor client + platform engine, for the Deezer tag lookups behind playlist suggestions
+                implementation(projects.ktorExt)
 
                 // Last.fm (gated: real scrobbler for full builds, no-op stub for FOSS builds)
                 if (isFullBuild) {
